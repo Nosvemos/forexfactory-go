@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexfactory-go/pkg/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,9 @@ var (
 	// Flags for live command
 	intervalFlag time.Duration
 	liveTimeLoc  string
+
+	// Flags for dbload command
+	dbFlag string
 )
 
 var rootCmd = &cobra.Command{
@@ -47,6 +51,16 @@ var downloadCmd = &cobra.Command{
 date range and exports it to compact, chronologically sorted CSV or JSON files.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		executeDownload()
+	},
+}
+
+var dbloadCmd = &cobra.Command{
+	Use:   "dbload",
+	Short: "Download and load calendar data into a local SQLite database",
+	Long: `Concurrently downloads economic calendar events across a specified date range 
+and loads/updates them directly inside a CGO-free local SQLite database via storage SDK.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		executeDbLoad()
 	},
 }
 
@@ -73,6 +87,18 @@ func init() {
 	_ = downloadCmd.MarkFlagRequired("start")
 	_ = downloadCmd.MarkFlagRequired("end")
 
+	// Configure dbload command flags
+	dbloadCmd.Flags().StringVarP(&startFlag, "start", "s", "", "Start date in YYYY-MM-DD format (Required)")
+	dbloadCmd.Flags().StringVarP(&endFlag, "end", "e", "", "End date in YYYY-MM-DD format (Required)")
+	dbloadCmd.Flags().StringVarP(&timezoneFlag, "timezone", "t", "", "Target timezone for event times (e.g. 'UTC', 'America/New_York')")
+	dbloadCmd.Flags().IntVarP(&rateLimitFlag, "rate-limit", "r", 1, "Maximum HTTP requests per second allowed")
+	dbloadCmd.Flags().IntVarP(&concurrencyFlag, "concurrency", "c", 3, "Number of concurrent downloading worker threads")
+	dbloadCmd.Flags().StringVar(&cookieFlag, "cookie", "", "Cloudflare clearance cookie (cf_clearance=...) to bypass anti-bot blocks")
+	dbloadCmd.Flags().StringVarP(&dbFlag, "db", "d", "forexfactory.db", "SQLite database file path")
+
+	_ = dbloadCmd.MarkFlagRequired("start")
+	_ = dbloadCmd.MarkFlagRequired("end")
+
 	// Configure live command flags
 	liveCmd.Flags().DurationVarP(&intervalFlag, "interval", "i", 0, "Polling interval for live streaming (e.g. '60s', '5m'). If 0, fetches once and exits.")
 	liveCmd.Flags().StringVarP(&liveTimeLoc, "timezone", "t", "", "Target timezone for event times (e.g. 'UTC', 'America/New_York')")
@@ -80,6 +106,7 @@ func init() {
 
 	// Bind commands to root
 	rootCmd.AddCommand(downloadCmd)
+	rootCmd.AddCommand(dbloadCmd)
 	rootCmd.AddCommand(liveCmd)
 }
 
@@ -100,29 +127,7 @@ type result struct {
 	sunday time.Time
 }
 
-func executeDownload() {
-	startDate, err := time.Parse("2006-01-02", startFlag)
-	if err != nil {
-		log.Fatalf("Invalid start date %q: must be YYYY-MM-DD", startFlag)
-	}
-
-	endDate, err := time.Parse("2006-01-02", endFlag)
-	if err != nil {
-		log.Fatalf("Invalid end date %q: must be YYYY-MM-DD", endFlag)
-	}
-
-	if startDate.After(endDate) {
-		log.Fatalf("Error: start date cannot be after end date")
-	}
-
-	var targetLoc *time.Location
-	if timezoneFlag != "" {
-		targetLoc, err = time.LoadLocation(timezoneFlag)
-		if err != nil {
-			log.Fatalf("Failed to load timezone %q: %v", timezoneFlag, err)
-		}
-	}
-
+func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Location) []forexfactory.Event {
 	// Calculate all Sundays spanning the range week-by-week
 	var sundays []time.Time
 	currentDate := startDate.AddDate(0, 0, -int(startDate.Weekday())) // Sun of start week
@@ -171,7 +176,7 @@ func executeDownload() {
 
 	// Collect results with dynamic visual ASCII progress bar
 	fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", workers)
-	
+
 	var allEvents []forexfactory.Event
 	for i := 0; i < numJobs; i++ {
 		res := <-resultsChan
@@ -207,6 +212,34 @@ func executeDownload() {
 		return filteredEvents[i].Date.Before(filteredEvents[j].Date)
 	})
 
+	return filteredEvents
+}
+
+func executeDownload() {
+	startDate, err := time.Parse("2006-01-02", startFlag)
+	if err != nil {
+		log.Fatalf("Invalid start date %q: must be YYYY-MM-DD", startFlag)
+	}
+
+	endDate, err := time.Parse("2006-01-02", endFlag)
+	if err != nil {
+		log.Fatalf("Invalid end date %q: must be YYYY-MM-DD", endFlag)
+	}
+
+	if startDate.After(endDate) {
+		log.Fatalf("Error: start date cannot be after end date")
+	}
+
+	var targetLoc *time.Location
+	if timezoneFlag != "" {
+		targetLoc, err = time.LoadLocation(timezoneFlag)
+		if err != nil {
+			log.Fatalf("Failed to load timezone %q: %v", timezoneFlag, err)
+		}
+	}
+
+	filteredEvents := fetchEventsConcurrently(startDate, endDate, targetLoc)
+
 	// Format output destination
 	var out io.Writer = os.Stdout
 	if outputFlag != "" {
@@ -235,6 +268,49 @@ func executeDownload() {
 	fmt.Fprintf(os.Stderr, "Successfully exported %d events.\n", len(filteredEvents))
 }
 
+func executeDbLoad() {
+	startDate, err := time.Parse("2006-01-02", startFlag)
+	if err != nil {
+		log.Fatalf("Invalid start date %q: must be YYYY-MM-DD", startFlag)
+	}
+
+	endDate, err := time.Parse("2006-01-02", endFlag)
+	if err != nil {
+		log.Fatalf("Invalid end date %q: must be YYYY-MM-DD", endFlag)
+	}
+
+	if startDate.After(endDate) {
+		log.Fatalf("Error: start date cannot be after end date")
+	}
+
+	var targetLoc *time.Location
+	if timezoneFlag != "" {
+		targetLoc, err = time.LoadLocation(timezoneFlag)
+		if err != nil {
+			log.Fatalf("Failed to load timezone %q: %v", timezoneFlag, err)
+		}
+	}
+
+	// 1. Fetch events concurrently
+	filteredEvents := fetchEventsConcurrently(startDate, endDate, targetLoc)
+
+	// 2. Initialize modular SQLite Storage driver via SDK
+	store := storage.NewSQLiteStorage(dbFlag)
+	ctx := context.Background()
+
+	if err := store.Init(ctx); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer store.Close()
+
+	// 3. Save events utilizing the modular Storage SDK interface
+	if err := store.SaveEvents(ctx, filteredEvents); err != nil {
+		log.Fatalf("Failed to load events into database: %v", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Successfully imported %d events into SQLite database %q via storage SDK.\n", len(filteredEvents), dbFlag)
+}
+
 func executeLive() {
 	var targetLoc *time.Location
 	var err error
@@ -245,12 +321,9 @@ func executeLive() {
 		}
 	}
 
-	var clientOpts []forexfactory.Option
-	clientOpts = append(clientOpts, forexfactory.WithTimeLocation(targetLoc))
-	if cookieFlag != "" {
-		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cookieFlag))
-	}
-	client := forexfactory.NewClient(clientOpts...)
+	client := forexfactory.NewClient(
+		forexfactory.WithTimeLocation(targetLoc),
+	)
 
 	if intervalFlag <= 0 {
 		fetchAndPrintLive(client)
