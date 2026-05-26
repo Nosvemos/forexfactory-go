@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
 )
@@ -15,6 +16,12 @@ type Storage interface {
 	
 	// SaveEvents bulk saves or updates the list of scraped economic events.
 	SaveEvents(ctx context.Context, events []forexfactory.Event) error
+	
+	// GetEvents retrieves events falling within the specified date range.
+	GetEvents(ctx context.Context, start, end time.Time) ([]forexfactory.Event, error)
+	
+	// GetEventsByCountry retrieves events matching a specific currency/country code.
+	GetEventsByCountry(ctx context.Context, country string) ([]forexfactory.Event, error)
 	
 	// Close safely closes the database connection.
 	Close() error

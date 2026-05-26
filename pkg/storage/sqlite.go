@@ -125,3 +125,98 @@ func (s *SQLiteStorage) Close() error {
 	}
 	return nil
 }
+
+// GetEvents retrieves events falling within the specified date range (inclusive of start/end days).
+func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]forexfactory.Event, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not initialized, call Init() first")
+	}
+
+	// Format dates in RFC3339 for correct string comparison in SQLite
+	startStr := start.Format(time.RFC3339)
+	endStr := end.Format(time.RFC3339)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		FROM events 
+		WHERE date >= ? AND date <= ?
+		ORDER BY date ASC
+	`, startStr, endStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events by range: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
+// GetEventsByCountry retrieves events matching a specific currency/country code.
+func (s *SQLiteStorage) GetEventsByCountry(ctx context.Context, country string) ([]forexfactory.Event, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not initialized, call Init() first")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		FROM events 
+		WHERE country = ?
+		ORDER BY date ASC
+	`, strings.ToUpper(strings.TrimSpace(country)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events by country: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
+// scanEvents is a helper function that reads database rows into Event structs.
+func scanEvents(rows *sql.Rows) ([]forexfactory.Event, error) {
+	var events []forexfactory.Event
+
+	for rows.Next() {
+		var e forexfactory.Event
+		var dateStr string
+		var impactStr string
+		var allDayVal, tentativeVal int
+
+		err := rows.Scan(
+			&e.ID,
+			&e.Title,
+			&e.Country,
+			&dateStr,
+			&impactStr,
+			&e.Forecast,
+			&e.Previous,
+			&e.Actual,
+			&allDayVal,
+			&tentativeVal,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event row: %w", err)
+		}
+
+		// Parse date back to time.Time
+		parsedTime, err := time.Parse(time.RFC3339, dateStr)
+		if err != nil {
+			// Fallback to simpler ISO-8601 parsing if needed
+			parsedTime, _ = time.Parse("2006-01-02 15:04:05", dateStr)
+		}
+		e.Date = parsedTime
+
+		// Map Impact
+		e.Impact = forexfactory.Impact(impactStr)
+
+		// Map boolean flags
+		e.IsAllDay = allDayVal == 1
+		e.IsTentative = tentativeVal == 1
+
+		events = append(events, e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration: %w", err)
+	}
+
+	return events, nil
+}

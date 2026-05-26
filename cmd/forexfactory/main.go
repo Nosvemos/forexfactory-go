@@ -117,102 +117,36 @@ func main() {
 	}
 }
 
-type job struct {
-	sunday time.Time
-}
-
-type result struct {
-	events []forexfactory.Event
-	err    error
-	sunday time.Time
-}
-
 func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Location) []forexfactory.Event {
-	// Calculate all Sundays spanning the range week-by-week
-	var sundays []time.Time
-	currentDate := startDate.AddDate(0, 0, -int(startDate.Weekday())) // Sun of start week
-	for currentDate.Before(endDate) || currentDate.Equal(endDate) {
-		sundays = append(sundays, currentDate)
-		currentDate = currentDate.AddDate(0, 0, 7)
-	}
-
-	// Initialize Client
+	// Initialize Client options
 	var clientOpts []forexfactory.Option
 	clientOpts = append(clientOpts, forexfactory.WithRateLimit(rateLimitFlag))
+	clientOpts = append(clientOpts, forexfactory.WithConcurrency(concurrencyFlag))
 	clientOpts = append(clientOpts, forexfactory.WithTimeLocation(targetLoc))
 	if cookieFlag != "" {
 		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cookieFlag))
 	}
+
+	// Dynamic visual progress callback
+	fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", concurrencyFlag)
+	clientOpts = append(clientOpts, forexfactory.WithProgressCallback(func(current, total int) {
+		pct := current * 100 / total
+		barLen := 30
+		filledLen := current * barLen / total
+		bar := strings.Repeat("█", filledLen) + strings.Repeat("░", barLen-filledLen)
+		fmt.Fprintf(os.Stderr, "\r[%s] %d%% Completed (%d/%d weeks)", bar, pct, current, total)
+	}))
+
 	client := forexfactory.NewClient(clientOpts...)
 
-	// Concurrency Worker Pool Setup
-	numJobs := len(sundays)
-	jobsChan := make(chan job, numJobs)
-	resultsChan := make(chan result, numJobs)
-
-	workers := concurrencyFlag
-	if workers > numJobs {
-		workers = numJobs
-	}
-	if workers < 1 {
-		workers = 1
+	events, err := client.FetchRange(context.Background(), startDate, endDate)
+	if err != nil {
+		fmt.Fprintln(os.Stderr) // Move cursor past progress bar
+		log.Fatalf("\nError downloading events: %v", err)
 	}
 
-	// Start concurrent workers
-	for w := 1; w <= workers; w++ {
-		go func() {
-			for j := range jobsChan {
-				events, err := client.FetchWeek(context.Background(), j.sunday)
-				resultsChan <- result{events: events, err: err, sunday: j.sunday}
-			}
-		}()
-	}
-
-	// Dispatch jobs
-	for _, s := range sundays {
-		jobsChan <- job{sunday: s}
-	}
-	close(jobsChan)
-
-	// Collect results with dynamic visual ASCII progress bar
-	fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", workers)
-
-	var allEvents []forexfactory.Event
-	for i := 0; i < numJobs; i++ {
-		res := <-resultsChan
-		if res.err != nil {
-			log.Fatalf("\nError downloading week of %s: %v", res.sunday.Format("2006-01-02"), res.err)
-		}
-
-		allEvents = append(allEvents, res.events...)
-
-		// Render interactive terminal progress indicator
-		pct := (i + 1) * 100 / numJobs
-		barLen := 30
-		filledLen := (i + 1) * barLen / numJobs
-		bar := strings.Repeat("█", filledLen) + strings.Repeat("░", barLen-filledLen)
-		fmt.Fprintf(os.Stderr, "\r[%s] %d%% Completed (%d/%d weeks)", bar, pct, i+1, numJobs)
-	}
 	fmt.Fprintln(os.Stderr, "\nProcessing, filtering and sorting events...")
-
-	// Filter out events falling strictly outside of start/end range
-	var filteredEvents []forexfactory.Event
-	for _, e := range allEvents {
-		eventDate := time.Date(e.Date.Year(), e.Date.Month(), e.Date.Day(), 0, 0, 0, 0, time.UTC)
-		filterStart := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.UTC)
-		filterEnd := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, time.UTC)
-
-		if (eventDate.After(filterStart) || eventDate.Equal(filterStart)) && (eventDate.Before(filterEnd) || eventDate.Equal(filterEnd)) {
-			filteredEvents = append(filteredEvents, e)
-		}
-	}
-
-	// Sort events chronologically to restore order from parallel downloads
-	sort.Slice(filteredEvents, func(i, j int) bool {
-		return filteredEvents[i].Date.Before(filteredEvents[j].Date)
-	})
-
-	return filteredEvents
+	return events
 }
 
 func executeDownload() {

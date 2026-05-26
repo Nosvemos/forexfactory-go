@@ -109,70 +109,10 @@ func ParseXML(data []byte, targetLoc *time.Location) ([]Event, error) {
 			e.Date = parsedTime
 		}
 
-		events = []Event{e}
-		events = append(events, e) // Wait, let's fix this in actual slice assignment
+		events = append(events, e)
 	}
 
-	// Wait, let's reconstruct the loop output slice correctly
-	finalEvents := make([]Event, 0, len(xmlFeed.Events))
-	for _, x := range xmlFeed.Events {
-		e := Event{
-			Title:    strings.TrimSpace(x.Title),
-			Country:  strings.TrimSpace(x.Country),
-			Forecast: strings.TrimSpace(x.Forecast),
-			Previous: strings.TrimSpace(x.Previous),
-			Actual:   strings.TrimSpace(x.Actual),
-		}
-
-		impStr := strings.ToLower(strings.TrimSpace(x.Impact))
-		switch impStr {
-		case "high":
-			e.Impact = ImpactHigh
-		case "medium":
-			e.Impact = ImpactMedium
-		case "low":
-			e.Impact = ImpactLow
-		default:
-			e.Impact = ImpactNone
-		}
-
-		dateStr := strings.TrimSpace(x.Date)
-		timeStr := strings.ToLower(strings.TrimSpace(x.Time))
-
-		if timeStr == "all day" || timeStr == "holiday" || timeStr == "" {
-			e.IsAllDay = true
-		} else if strings.Contains(timeStr, "tentative") {
-			e.IsTentative = true
-		}
-
-		var parsedTime time.Time
-		var err error
-		sourceLoc := time.UTC
-
-		if e.IsAllDay || e.IsTentative {
-			parsedTime, err = time.ParseInLocation("01-02-2006", dateStr, sourceLoc)
-		} else {
-			combined := fmt.Sprintf("%s %s", dateStr, timeStr)
-			parsedTime, err = time.ParseInLocation("01-02-2006 3:04pm", combined, sourceLoc)
-			if err != nil {
-				parsedTime, err = time.ParseInLocation("01-02-2006 15:04", combined, sourceLoc)
-			}
-		}
-
-		if err != nil {
-			parsedTime, _ = time.ParseInLocation("01-02-2006", dateStr, sourceLoc)
-		}
-
-		if targetLoc != nil {
-			e.Date = parsedTime.In(targetLoc)
-		} else {
-			e.Date = parsedTime
-		}
-
-		finalEvents = append(finalEvents, e)
-	}
-
-	return finalEvents, nil
+	return events, nil
 }
 
 // ParseHTML parses the calendar HTML from an io.Reader.

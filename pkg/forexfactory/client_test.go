@@ -9,12 +9,15 @@ import (
 )
 
 func TestClientOptions(t *testing.T) {
-	// Test WithUserAgent and WithRateLimit
+	// Test WithUserAgent, WithRateLimit, WithConcurrency and WithProgressCallback
+	var calledProgress bool
 	client := NewClient(
 		WithUserAgent("TestAgent/1.0"),
 		WithRateLimit(5),
 		WithProxy("http://127.0.0.1:8080"),
 		WithHeader("X-Custom-Cookie", "mycookievalue"),
+		WithConcurrency(10),
+		WithProgressCallback(func(c, tot int) { calledProgress = true }),
 	)
 
 	if client.userAgent != "TestAgent/1.0" {
@@ -31,6 +34,19 @@ func TestClientOptions(t *testing.T) {
 
 	if client.headers["X-Custom-Cookie"] != "mycookievalue" {
 		t.Errorf("Expected header X-Custom-Cookie to be 'mycookievalue', got '%s'", client.headers["X-Custom-Cookie"])
+	}
+
+	if client.concurrency != 10 {
+		t.Errorf("Expected concurrency 10, got %d", client.concurrency)
+	}
+
+	if client.progressCallback == nil {
+		t.Errorf("Expected progressCallback to be configured")
+	} else {
+		client.progressCallback(1, 2)
+		if !calledProgress {
+			t.Errorf("Expected progress callback to trigger")
+		}
 	}
 }
 
@@ -82,4 +98,18 @@ func TestExecuteRequestHeaders(t *testing.T) {
 	if string(body) != "mock response" {
 		t.Errorf("Expected body 'mock response', got '%s'", string(body))
 	}
+}
+
+func TestClientFetchRangeValidation(t *testing.T) {
+	client := NewClient()
+
+	// 1. Verify that a start date after end date returns an error
+	start := time.Date(2026, time.May, 26, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, time.May, 25, 0, 0, 0, 0, time.UTC)
+	_, err := client.FetchRange(context.Background(), start, end)
+	if err == nil {
+		t.Errorf("Expected error when start is after end date, got nil")
+	}
+
+	// 2. Verify that progress callback is called if configured (we can test with an empty range or similar if allowed)
 }

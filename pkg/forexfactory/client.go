@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,12 +18,14 @@ import (
 
 // Client is the main crawler and client for accessing Forex Factory calendar data.
 type Client struct {
-	httpClient *http.Client
-	userAgent  string
-	proxyURL   string
-	rateLimit  int // Maximum requests per second
-	timeLoc    *time.Location
-	headers    map[string]string // Custom HTTP headers
+	httpClient        *http.Client
+	userAgent         string
+	proxyURL          string
+	rateLimit         int // Maximum requests per second
+	timeLoc           *time.Location
+	headers           map[string]string // Custom HTTP headers
+	concurrency       int
+	progressCallback  func(current, total int)
 
 	mu          sync.Mutex
 	lastRequest time.Time
@@ -36,9 +39,10 @@ func NewClient(opts ...Option) *Client {
 		httpClient: &http.Client{
 			Timeout: 20 * time.Second,
 		},
-		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-		rateLimit: 1, // Default rate limit: 1 request/second
-		headers:   make(map[string]string),
+		userAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+		rateLimit:   1, // Default rate limit: 1 request/second
+		concurrency: 3, // Default concurrency: 3 workers
+		headers:     make(map[string]string),
 	}
 
 	for _, opt := range opts {
@@ -353,3 +357,125 @@ func (c *Client) FetchLiveFeed(ctx context.Context) ([]Event, error) {
 
 	return events, nil
 }
+
+// FetchRange downloads calendar events concurrently across the specified date range.
+// It splits the range into weeks (starting from the Sunday of each week), distributes the downloads
+// across concurrent workers (using the configured rate limiter), invokes the progress callback if set,
+// and returns a chronologically sorted slice of Events matching the range.
+func (c *Client) FetchRange(ctx context.Context, start, end time.Time) ([]Event, error) {
+	if start.After(end) {
+		return nil, fmt.Errorf("start date cannot be after end date")
+	}
+
+	// Calculate all Sundays spanning the range week-by-week
+	var sundays []time.Time
+	currentDate := start.AddDate(0, 0, -int(start.Weekday())) // Sunday of start week
+	for currentDate.Before(end) || currentDate.Equal(end) {
+		sundays = append(sundays, currentDate)
+		currentDate = currentDate.AddDate(0, 0, 7)
+	}
+
+	numJobs := len(sundays)
+	if numJobs == 0 {
+		return nil, nil
+	}
+
+	type job struct {
+		sunday time.Time
+	}
+
+	type result struct {
+		events []Event
+		err    error
+		sunday time.Time
+	}
+
+	jobsChan := make(chan job, numJobs)
+	resultsChan := make(chan result, numJobs)
+
+	workers := c.concurrency
+	if workers > numJobs {
+		workers = numJobs
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	// Start concurrent workers
+	var wg sync.WaitGroup
+	for w := 1; w <= workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobsChan {
+				select {
+				case <-ctx.Done():
+					resultsChan <- result{err: ctx.Err(), sunday: j.sunday}
+					return
+				default:
+				}
+
+				events, err := c.FetchWeek(ctx, j.sunday)
+				resultsChan <- result{events: events, err: err, sunday: j.sunday}
+			}
+		}()
+	}
+
+	// Dispatch jobs
+	for _, s := range sundays {
+		jobsChan <- job{sunday: s}
+	}
+	close(jobsChan)
+
+	// Wait for workers to finish in a separate goroutine and close results channel
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	var allEvents []Event
+	var firstErr error
+
+	// Collect results
+	completed := 0
+	for res := range resultsChan {
+		completed++
+		if c.progressCallback != nil {
+			c.progressCallback(completed, numJobs)
+		}
+
+		if res.err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("error downloading week of %s: %w", res.sunday.Format("2006-01-02"), res.err)
+			}
+			continue
+		}
+
+		allEvents = append(allEvents, res.events...)
+	}
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	// Filter out events falling strictly outside of start/end range
+	var filteredEvents []Event
+	// Normalize filter boundaries to date-only UTC for stable comparisons
+	filterStart := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	filterEnd := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+
+	for _, e := range allEvents {
+		eventDate := time.Date(e.Date.Year(), e.Date.Month(), e.Date.Day(), 0, 0, 0, 0, time.UTC)
+		if (eventDate.After(filterStart) || eventDate.Equal(filterStart)) && (eventDate.Before(filterEnd) || eventDate.Equal(filterEnd)) {
+			filteredEvents = append(filteredEvents, e)
+		}
+	}
+
+	// Sort events chronologically to restore order from parallel downloads
+	sort.Slice(filteredEvents, func(i, j int) bool {
+		return filteredEvents[i].Date.Before(filteredEvents[j].Date)
+	})
+
+	return filteredEvents, nil
+}
+

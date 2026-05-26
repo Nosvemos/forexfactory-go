@@ -66,3 +66,22 @@ func WithHeader(key, value string) Option {
 		c.headers[key] = value
 	}
 }
+
+// WithConcurrency returns an Option that configures the concurrent downloading workers
+// when fetching a range of dates.
+func WithConcurrency(workers int) Option {
+	return func(c *Client) {
+		if workers > 0 {
+			c.concurrency = workers
+		}
+	}
+}
+
+// WithProgressCallback returns an Option that sets a custom callback function
+// to receive progress updates during range downloads (ticks current week index / total weeks).
+func WithProgressCallback(callback func(current, total int)) Option {
+	return func(c *Client) {
+		c.progressCallback = callback
+	}
+}
+

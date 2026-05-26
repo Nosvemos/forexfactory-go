@@ -55,7 +55,28 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Fatalf("SaveEvents failed: %v", err)
 	}
 
-	// 3. Close connection
+	// Test new SDK query functions
+	// 3. Test GetEvents
+	startQuery := time.Date(2026, time.May, 26, 0, 0, 0, 0, time.UTC)
+	endQuery := time.Date(2026, time.May, 26, 23, 59, 59, 0, time.UTC)
+	events, err := store.GetEvents(ctx, startQuery, endQuery)
+	if err != nil {
+		t.Fatalf("GetEvents failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Errorf("Expected 2 events from GetEvents, got %d", len(events))
+	}
+
+	// 4. Test GetEventsByCountry
+	usdEvents, err := store.GetEventsByCountry(ctx, "usd")
+	if err != nil {
+		t.Fatalf("GetEventsByCountry failed: %v", err)
+	}
+	if len(usdEvents) != 1 || usdEvents[0].Title != "FOMC Press Conference" {
+		t.Errorf("GetEventsByCountry failed to return USD events correctly")
+	}
+
+	// 5. Close connection
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)
 	}
