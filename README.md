@@ -1,0 +1,2 @@
+# forexfactory-go
+
