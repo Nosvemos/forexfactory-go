@@ -4,20 +4,22 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/Nosvemos/forexfactory-go)](https://goreportcard.com/report/github.com/Nosvemos/forexfactory-go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A robust, premium Go library and CLI tool to scrape and stream economic calendar data from **Forex Factory** (`https://www.forexfactory.com/calendar`). Designed to fetch both historical data and stream live economic events seamlessly.
+A robust, enterprise-grade Go library and premium command-line tool (CLI) to scrape and stream economic calendar data from **Forex Factory** (`https://www.forexfactory.com/calendar`). Designed to fetch both historical data and stream live economic events seamlessly.
 
-Highly inspired by modular data retrieval designs (like `dukascopy-go`), this module is designed for performance, customizability, rate-limit safety, and absolute ease of use.
+Highly inspired by modular, high-performance data retrieval designs (like `dukascopy-go`), this module is designed for performance, concurrent scraping, customizability, rate-limit safety, and absolute ease of use.
 
 ---
 
 ## Features
 
 - **Historical Calendar Scraping**: Fetch weeks/days of historical economic calendar events.
+- **Concurrent Worker Pool Scraper**: Parallelizes historical downloading across multiple worker goroutines, delivering up to **Nx speed increases** for large-scale range fetches.
+- **Cobra CLI Integration**: Implements a high-quality CLI utilizing the industry-standard **Cobra** framework, featuring nested subcommands, robust flag handling, and automatic help page generation.
+- **Custom ASCII Progress Indicator**: Renders highly interactive, beautiful, and responsive progress tracking directly in your terminal.
+- **Cloudflare Bypass Support**: Features a `--cookie` flag (and client option `WithHeader`) to directly accept clearance cookies (`cf_clearance`, etc.) to bypass strict anti-bot protections.
 - **Real-Time/Live Event Streaming**: Stream current week events directly from a lightweight XML feed, bypassing heavy HTML/Cloudflare overhead.
-- **Robust Rate Limiting**: Built-in, configurable rate-limit controls and random backoffs to prevent IP blocks.
-- **Advanced Configuration**: Configure user agents, proxy lists, timeouts, and custom HTTP clients easily.
+- **Robust Rate Limiting**: Built-in, thread-safe rate-limit controls to prevent IP blocks.
 - **Multi-Timezone Support**: Automatically shift event times to your local timezone or any specified timezone.
-- **Unified CLI Tool**: Quick commands to download historical events (CSV, JSON) or monitor live updates directly from your terminal.
 
 ---
 
@@ -41,40 +43,47 @@ go install github.com/Nosvemos/forexfactory-go/cmd/forexfactory@latest
 
 ## CLI Usage
 
-The executable provides two simple commands: `download` and `live`.
+The executable provides two highly modular commands: `download` and `live`.
 
 ### 1. Download Historical Calendar Data
-Download calendar events within a specific date range as a compact CSV or JSON file.
+Download calendar events within a specific date range as a compact CSV or JSON file concurrently.
 
 ```bash
-# Download a week of data in CSV format
-forexfactory download --start 2026-05-18 --end 2026-05-24 --format csv --output calendar_may26.csv
+# Download a month of data concurrently using 4 workers, exporting to a CSV file
+forexfactory download --start 2026-05-01 --end 2026-05-31 --concurrency 4 --format csv --output calendar_may26.csv
 
-# Download historical events as JSON to stdout
-forexfactory download --start 2026-01-01 --end 2026-01-31 --format json
+# Download historical events as JSON using a custom timezone and Cloudflare bypass cookies
+forexfactory download -s 2026-01-01 -e 2026-01-31 --timezone "Europe/Istanbul" --cookie "cf_clearance=your_cf_clearance_value" --format json
 ```
 
-**Options**:
-- `--start`: Start date (`YYYY-MM-DD`). *Required*.
-- `--end`: End date (`YYYY-MM-DD`). *Required*.
-- `--format`: Output format, either `json` or `csv` (default: `json`).
-- `--output`: File path to write data (default: prints to stdout).
-- `--timezone`: Target timezone (e.g., `America/New_York`, `Europe/Istanbul`) (default: Local / ForexFactory default).
-- `--rate-limit`: Maximum HTTP requests per second (default: `1`).
+**Flags**:
+- `-s, --start`: Start date (`YYYY-MM-DD`). *Required*.
+- `-e, --end`: End date (`YYYY-MM-DD`). *Required*.
+- `-f, --format`: Output format: `json` or `csv` (default: `json`).
+- `-o, --output`: File path to write data (default: prints to stdout).
+- `-t, --timezone`: Target timezone (e.g. `America/New_York`, `UTC`, `Local`).
+- `-c, --concurrency`: Number of concurrent downloading worker threads (default: `3`).
+- `-r, --rate-limit`: Maximum HTTP requests per second allowed per worker (default: `1`).
+- `--cookie`: Custom Cloudflare clearance cookie to bypass anti-bot blocks.
 
 ### 2. Live Calendar Streaming / Watching
 Monitor the current week's economic events in real time.
 
 ```bash
 # Watch live economic events, polling every 60 seconds
-forexfactory live --interval 60s
+forexfactory live --interval 60s --timezone Local
 ```
+
+**Flags**:
+- `-i, --interval`: Polling interval for live streaming (e.g., `60s`, `5m`). If `0`, fetches once and exits.
+- `-t, --timezone`: Target timezone (e.g. `America/New_York`, `Local`).
+- `--cookie`: Custom Cloudflare clearance cookie if the feed rate-limits or blocks.
 
 ---
 
 ## Library Usage Examples
 
-### Simple Usage
+### Fetching Calendar Data
 ```go
 package main
 
@@ -90,8 +99,9 @@ import (
 func main() {
 	// Initialize a client with custom options
 	client := forexfactory.NewClient(
-		forexfactory.WithRateLimit(1), // 1 request per second
-		forexfactory.WithTimeLocation(time.Local), // Convert event times to local time
+		forexfactory.WithRateLimit(2),             // Cap at 2 requests per second
+		forexfactory.WithTimeLocation(time.Local), // Convert event times to local timezone
+		forexfactory.WithHeader("Cookie", "cf_clearance=your_cookie_here"), // Bypass Cloudflare
 	)
 
 	// Fetch a specific week's events
@@ -122,11 +132,12 @@ When initializing the client with `forexfactory.NewClient(...)`, you can pass va
 
 | Option | Description | Example |
 | :--- | :--- | :--- |
-| `WithHTTPClient(client *http.Client)` | Use a custom HTTP client (e.g., with proxy/ja3/cookies) | `WithHTTPClient(&http.Client{Timeout: 10 * time.Second})` |
+| `WithHTTPClient(client *http.Client)` | Use a custom HTTP client | `WithHTTPClient(&http.Client{Timeout: 10 * time.Second})` |
 | `WithUserAgent(ua string)` | Rotate or set custom user agent headers | `WithUserAgent("CustomAgent/1.0")` |
-| `WithProxy(proxyURL string)` | Direct requests through a proxy | `WithProxy("http://user:pass@host:port")` |
+| `WithProxy(proxyURL string)` | Direct requests through a proxy | `WithProxy("socks5://127.0.0.1:9050")` |
 | `WithRateLimit(limit int)` | Set maximum queries per second | `WithRateLimit(2)` |
 | `WithTimeLocation(loc *time.Location)`| Shift parsed datetimes to target location | `WithTimeLocation(time.UTC)` |
+| `WithHeader(key, value string)`| Inject custom header (like `Cookie`, `Referer`, `Authorization`) | `WithHeader("Cookie", "cf_clearance=...")` |
 
 ---
 
