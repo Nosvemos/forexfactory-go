@@ -242,6 +242,11 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 			}
 		}
 
+		if err != nil {
+			// Fallback to date-only parsing to prevent zero value dates
+			parsedTime, _ = time.ParseInLocation("Jan 2 2006", combinedDateStr, sourceLoc)
+		}
+
 		// Apply target location conversion if provided
 		if targetLoc != nil {
 			e.Date = parsedTime.In(targetLoc)

@@ -30,6 +30,11 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 	}
 	s.db = db
 
+	// Enable WAL (Write-Ahead Logging) mode for concurrent read/write stability
+	if _, err := s.db.ExecContext(ctx, "PRAGMA journal_mode=WAL;"); err != nil {
+		return fmt.Errorf("failed to enable SQLite WAL mode: %w", err)
+	}
+
 	schema := `
 	CREATE TABLE IF NOT EXISTS events (
 		id TEXT PRIMARY KEY,

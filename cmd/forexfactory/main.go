@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
