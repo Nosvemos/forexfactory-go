@@ -2,11 +2,13 @@ package forexfactory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -33,6 +35,12 @@ type Client struct {
 
 	bypassMu  sync.Mutex // Mutex specifically to prevent multiple headless instances from solving Cloudflare concurrently
 	browserMu sync.Mutex // Mutex to serialize all browser fallbacks (prevent concurrency storm)
+
+	// Long-lived browser context fields
+	allocCtx    context.Context
+	allocCancel context.CancelFunc
+	chromeCtx   context.Context
+	chromeCancel context.CancelFunc
 }
 
 // NewClient creates and initializes a new Client with the provided options.
@@ -61,7 +69,104 @@ func NewClient(opts ...Option) *Client {
 		}
 	}
 
+	// Load cached cookies on client initialization to bypass headless browser solves entirely
+	c.loadSession()
+
 	return c
+}
+
+type sessionData struct {
+	Cookie      string    `json:"cookie"`
+	LastUpdated time.Time `json:"last_updated"`
+}
+
+func getSessionFilePath() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	dir := filepath.Join(cacheDir, "forexfactory-go")
+	_ = os.MkdirAll(dir, 0700)
+	return filepath.Join(dir, "session.json")
+}
+
+func (c *Client) loadSession() {
+	path := getSessionFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var sess sessionData
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return
+	}
+
+	// Session is valid for 24 hours
+	if time.Since(sess.LastUpdated) < 24*time.Hour && sess.Cookie != "" {
+		c.mu.Lock()
+		if c.headers == nil {
+			c.headers = make(map[string]string)
+		}
+		c.headers["Cookie"] = sess.Cookie
+		c.mu.Unlock()
+	}
+}
+
+func (c *Client) saveSession(cookieStr string) error {
+	path := getSessionFilePath()
+	sess := sessionData{
+		Cookie:      cookieStr,
+		LastUpdated: time.Now(),
+	}
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
+}
+
+func (c *Client) initBrowser() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.chromeCtx != nil {
+		return nil // Already initialized
+	}
+
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("excludeSwitches", "enable-automation"),
+	)
+
+	if extPath := findChromiumPath(); extPath != "" {
+		opts = append(opts, chromedp.ExecPath(extPath))
+	}
+
+	c.allocCtx, c.allocCancel = chromedp.NewExecAllocator(context.Background(), opts...)
+	c.chromeCtx, c.chromeCancel = chromedp.NewContext(c.allocCtx)
+
+	return nil
+}
+
+// Close safely cleans up any long-lived browser sessions.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.chromeCancel != nil {
+		c.chromeCancel()
+		c.chromeCtx = nil
+		c.chromeCancel = nil
+	}
+	if c.allocCancel != nil {
+		c.allocCancel()
+		c.allocCtx = nil
+		c.allocCancel = nil
+	}
+	return nil
 }
 
 // findChromiumPath attempts to discover a valid Google Chrome, Microsoft Edge, or Chromium-based
@@ -151,29 +256,14 @@ func (c *Client) applyHeaders(req *http.Request) {
 
 // SolveCloudflareChallenge programmatically drives a headless Chrome browser via chromedp
 // to solve the Cloudflare validation check. It extracts the document.cookie string
-// and binds it to the Client's headers for all subsequent calls.
+// and binds it to the Client's headers for all subsequent calls, saving it in a local cache.
 func (c *Client) SolveCloudflareChallenge() error {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("excludeSwitches", "enable-automation"),
-	)
-
-	// Inject auto-discovered Chromium path if Chrome/Edge was found on standard system locations
-	if extPath := findChromiumPath(); extPath != "" {
-		opts = append(opts, chromedp.ExecPath(extPath))
+	if err := c.initBrowser(); err != nil {
+		return err
 	}
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer allocCancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	// Assign context timeout to protect against getting stuck
-	ctx, cancel = context.WithTimeout(ctx, 40*time.Second)
+	// Create a short-lived timeout context from our long-lived chromeCtx
+	ctx, cancel := context.WithTimeout(c.chromeCtx, 40*time.Second)
 	defer cancel()
 
 	var cookiesStr string
@@ -204,6 +294,9 @@ func (c *Client) SolveCloudflareChallenge() error {
 		}
 		c.headers["Cookie"] = cookiesStr
 		c.mu.Unlock()
+
+		// Save the newly resolved cookie session to local persistent cache
+		_ = c.saveSession(cookiesStr)
 	}
 
 	return nil
@@ -212,30 +305,17 @@ func (c *Client) SolveCloudflareChallenge() error {
 // FetchWeekViaBrowser drives a headless Chromium instance to navigate to the weekly calendar,
 // waits for it to render, and extracts the raw outer HTML content to bypass advanced TLS fingerprinting.
 func (c *Client) FetchWeekViaBrowser(ctx context.Context, targetURL string) ([]byte, error) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("excludeSwitches", "enable-automation"),
-	)
-
-	if extPath := findChromiumPath(); extPath != "" {
-		opts = append(opts, chromedp.ExecPath(extPath))
+	if err := c.initBrowser(); err != nil {
+		return nil, err
 	}
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer allocCancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
+	// Create a short-lived context derived from our long-lived chromeCtx
+	browserCtx, cancel := context.WithTimeout(c.chromeCtx, 45*time.Second)
 	defer cancel()
 
 	var htmlContent string
 
-	err := chromedp.Run(ctx,
+	err := chromedp.Run(browserCtx,
 		chromedp.Navigate(targetURL),
 		chromedp.WaitVisible("table.calendar__table", chromedp.ByQuery),
 		chromedp.OuterHTML("html", &htmlContent),

@@ -144,6 +144,7 @@ func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Locat
 	}
 
 	client := forexfactory.NewClient(clientOpts...)
+	defer client.Close()
 
 	events, err := client.FetchRange(context.Background(), startDate, endDate)
 	if err != nil {

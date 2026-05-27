@@ -14,9 +14,12 @@ Highly inspired by modular, high-performance tick-data downloader designs (like 
 
 - **Historical Range Downloader**: Fetch events concurrently across broad date ranges via a built-in worker pool.
 - **Real-Time XML Stream Tracker**: Pull the current week's events from a lightweight, low-overhead XML stream.
-- **Dual-Use Storage SDK**: Decoupled persistence interface featuring high-speed bulk insertions and rich range/currency query methods using a CGO-free, **WAL (Write-Ahead Logging) optimized SQLite driver**.
-- **Programmatic Hooks & Custom Options**: Exposes thread-safe rate-limiting, custom proxy bindings, and progress update listeners (`ProgressCallback`) for seamless integrations in web and background applications.
-- **Automated Cloudflare Resolution**: Integrated fallback mechanics utilizing headless Chromium drivers to seamlessly navigate Cloudflare anti-bot verification.
+- **Dual-Use Storage SDK**: Decoupled persistence interface featuring high-speed bulk insertions and rich range/currency query methods using a CGO-free, **WAL (Write-Ahead Logging) optimized SQLite driver** with lock-preventing busy timeouts.
+- **Programmatic Hooks & Custom Options**: Exposes thread-safe rate-limiting, selective impact filtering (`WithImpacts`), custom proxy bindings, and progress update listeners (`ProgressCallback`) for seamless integrations in web and background applications.
+- **Automated Cloudflare Evasion**: Integrated fallback mechanics utilizing headless Chromium drivers with Turnstile automation bypass flags.
+- **Ultra-Fast Persistent Session Cache**: Session cookies are automatically stored in the local OS cache database, bypassing headless browser boots completely on subsequent runs for instantaneous, sub-second execution speeds.
+- **Visual Terminal Tables**: High-end ASCII border layouts with bold colored status emojis (`🔴 HIGH`, `🟡 MEDIUM`, `🟢 LOW`) rendered natively in your CLI shell.
+- **Webhook Notifier Daemon**: Spin up the real-time background alert service (`ff-notifier`) to push Warning Cards to Discord channels and Telegram groups exactly 15 minutes before news hits.
 - **Timezone Standardization**: Shifting calendar datetimes to any target location (e.g. UTC, local, or financial center zones).
 
 ---
@@ -56,14 +59,31 @@ forexfactory download -s 2026-01-01 -e 2026-01-31 --timezone "Europe/Istanbul" -
 
 ### 2. Download and Load directly into SQLite Database
 ```bash
-# Downloads and load historical events directly inside a CGO-free local SQLite database
-forexfactory dbload --start 2026-05-01 --end 2026-05-31 --db forexfactory.db
+# Downloads and load historical events directly inside a CGO-free local SQLite database (muted via --silent)
+forexfactory dbload --start 2026-05-01 --end 2026-05-31 --db forexfactory.db --silent
 ```
 
 ### 3. Live Economic Feed Polling
 ```bash
-# Watch live economic events, polling every 60 seconds
+# Watch live economic events in a gorgeous colorized ASCII table format, polling every 60 seconds
 forexfactory live --interval 60s --timezone Local
+```
+
+### 4. Real-time Telegram & Discord News Alarm Daemon (`ff-notifier`)
+To launch the background notification alerting daemon that watches the feed and pushes alert warnings to Discord webhooks or Telegram chats exactly 15 minutes before news hits:
+
+Install the notifier binary:
+```bash
+go install github.com/Nosvemos/forexfactory-go/cmd/ff-notifier@latest
+```
+
+Run the notifier daemon:
+```bash
+# Alert Discord webhook and Telegram channel before high and medium impact releases
+ff-notifier --discord-webhook "https://discord.com/api/webhooks/..." \
+            --telegram-token "123456:ABC..." \
+            --telegram-chat "@my_alerts_channel" \
+            --min-impact "Medium"
 ```
 
 ---
@@ -170,6 +190,7 @@ When initializing the client with `forexfactory.NewClient(...)`, you can pass va
 | `WithProgressCallback(fn)` | Attach a custom progress listener | `WithProgressCallback(func(c, t int) {})` |
 | `WithTimeLocation(loc *time.Location)`| Shift parsed datetimes to target location | `WithTimeLocation(time.UTC)` |
 | `WithHeader(key, value string)`| Inject custom header (like `Cookie`, `Referer`, `Authorization`) | `WithHeader("Cookie", "cf_clearance=...")` |
+| `WithImpacts(impacts ...Impact)`| Selective filtering of news impact levels during download | `WithImpacts(ImpactHigh, ImpactMedium)` |
 
 ---
 
