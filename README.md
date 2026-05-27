@@ -1,9 +1,6 @@
 <div align="center">
   <h1>forexfactory-go 🚀</h1>
-  <p><b>The fastest, zero-dependency tool and Go library to scrape, stream, and persist Forex Factory macroeconomic events concurrently — with automatic Cloudflare Turnstile bypass.</b></p>
-
-  <img width="800" height="210" alt="download" src="https://github.com/user-attachments/assets/f240008c-5e87-4139-bddb-20b55ac15743" />
-  
+  <p><b>The fastest, zero-dependency tool and Go library to scrape, stream, and persist Forex Factory macroeconomic events concurrently — with automatic Cloudflare Turnstile bypass.</b></p>  
   <p>
     <a href="https://github.com/Nosvemos/forexfactory-go/actions/workflows/ci.yml"><img src="https://github.com/Nosvemos/forexfactory-go/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/Nosvemos/forexfactory-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/forexfactory-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
