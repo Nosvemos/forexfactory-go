@@ -213,9 +213,6 @@ err = store.SaveEvents(ctx, events)
 
 Forex Factory utilizes advanced Cloudflare Turnstile defenses. `forexfactory-go` bypasses this transparently.
 
-> [!IMPORTANT]  
-> Tarayıcı operasyonları ve HTTP istekleri, Cloudflare algoritmalarını tetiklememek için tamamen doğal davranış taklidiyle gerçekleştirilir.
-
 1. **Long-Lived Session Cache**: Automatically saves resolved Cloudflare session cookies and their matching User-Agent inside `session.json` in the user's standard OS cache directory (`os.UserCacheDir()`). This completely avoids launching the browser on subsequent executions.
 2. **Dual User-Agent Identity Alignment**: The browser is executed naturally without overriding the user-agent string to prevent platform-mismatch block triggers. The resolved natural browser identity is dynamically captured and bound to the asynchronous TLS fingerprint spoofer (`imroc/req/v3`) for subsequent requests.
 3. **Automatic Headed Fallback**: Cloudflare Turnstile blocks standard headless execution. If the background headless attempt fails or times out, the client automatically falls back to headed mode (opening a brief browser window to pass the challenge automatically) and automatically closes once solved, achieving 100% bypass reliability.
