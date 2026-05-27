@@ -58,7 +58,7 @@ type ClientOptions struct {
 func InitClient(optsJSON *C.char) C.longlong {
 	goStr := C.GoString(optsJSON)
 	var opts ClientOptions
-	
+
 	// Default values
 	opts.RateLimit = 1
 	opts.Concurrency = 3

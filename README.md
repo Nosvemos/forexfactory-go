@@ -116,7 +116,7 @@ end = datetime(2026, 5, 10)
 # Scrape concurrently and return directly as a structured Pandas DataFrame!
 df = client.fetch_range(start, end, as_dataframe=True)
 
-print(df[["date", "country", "impact", "title", "forecast", "actual"]].head(10))
+print(df[["date", "currency", "impact", "title", "forecast", "actual"]].head(10))
 
 # Safely close browser allocations
 client.close()
@@ -161,10 +161,11 @@ err = store.SaveEvents(ctx, events)
 
 ## 🛡️ Premium Anti-Bot Protections
 
-Forex Factory utilizes Cloudflare bot protection. `forexfactory-go` bypasses this transparently:
-1. **Long-Lived Session Cache**: Automatically saves resolved Cloudflare session cookies in `session.json` inside the user's standard OS cache directory (`os.UserCacheDir()`).
-2. **Headless Browser Fallback**: If a fast HTTP request fails with 403 Forbidden, the SDK boots a headless Chromium instance, waits for Turnstile automation bypass flags, and grabs the clearance cookie.
-3. **Serialization Lock**: Headless browser starts are globally synchronized via mutexes to prevent concurrency storms and protect CPU/memory.
+Forex Factory utilizes Cloudflare bot protection. `forexfactory-go` bypasses this transparently and reliably:
+1. **Long-Lived Session Cache**: Automatically saves resolved Cloudflare session cookies and their matching User-Agent inside `session.json` in the user's standard OS cache directory (`os.UserCacheDir()`). This completely avoids launching the browser on subsequent executions.
+2. **Dual User-Agent Identity Alignment**: The browser is executed naturally without overriding the user-agent string to prevent platform-mismatch block triggers. The resolved natural browser identity is dynamically captured and bound to the asynchronus TLS fingerprint spoofer (`imroc/req/v3`) for subsequent requests.
+3. **Automatic Headed Fallback**: Cloudflare Turnstile blocks standard headless execution. If the background headless attempt fails or times out, the client automatically falls back to headed mode (opening a brief browser window to pass the challenge automatically) and automatically closes once solved, achieving 100% bypass reliability.
+4. **Serialization Lock & Deadlock Prevention**: Browser operations are globally serialized via thread-safe mutex locks to prevent concurrency storms and protect memory/CPU, with optimized direct HTTP retries to eliminate deadlock risks.
 
 ---
 

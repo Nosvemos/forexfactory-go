@@ -45,7 +45,7 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS events (
 		id VARCHAR(128) PRIMARY KEY,
 		title VARCHAR(256),
-		country VARCHAR(32),
+		currency VARCHAR(32),
 		date TIMESTAMPTZ,
 		impact VARCHAR(64),
 		forecast VARCHAR(128),
@@ -55,7 +55,7 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 		tentative BOOLEAN
 	);
 	CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
-	CREATE INDEX IF NOT EXISTS idx_events_country ON events(country);
+	CREATE INDEX IF NOT EXISTS idx_events_currency ON events(currency);
 	`
 
 	_, err = p.db.ExecContext(ctx, schema)
@@ -79,11 +79,11 @@ func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexfactory.
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO events (
-			id, title, country, date, impact, forecast, previous, actual, all_day, tentative
+			id, title, currency, date, impact, forecast, previous, actual, all_day, tentative
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			title = EXCLUDED.title,
-			country = EXCLUDED.country,
+			currency = EXCLUDED.currency,
 			date = EXCLUDED.date,
 			impact = EXCLUDED.impact,
 			forecast = EXCLUDED.forecast,
@@ -101,7 +101,7 @@ func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexfactory.
 	for _, e := range events {
 		eventID := e.ID
 		if eventID == "" {
-			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Country, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
 			h := sha256.Sum256([]byte(hashInput))
 			eventID = fmt.Sprintf("fallback-%x", h[:8])
 		}
@@ -109,7 +109,7 @@ func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexfactory.
 		_, err = stmt.ExecContext(ctx,
 			eventID,
 			e.Title,
-			e.Country,
+			e.Currency,
 			e.Date,
 			string(e.Impact),
 			e.Forecast,
@@ -138,7 +138,7 @@ func (p *PostgresStorage) GetEvents(ctx context.Context, start, end time.Time) (
 	}
 
 	rows, err := p.db.QueryContext(ctx, `
-		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
 		FROM events 
 		WHERE date >= $1 AND date <= $2
 		ORDER BY date ASC
@@ -151,20 +151,20 @@ func (p *PostgresStorage) GetEvents(ctx context.Context, start, end time.Time) (
 	return p.scanEvents(rows)
 }
 
-// GetEventsByCountry retrieves events matching a specific currency/country code.
-func (p *PostgresStorage) GetEventsByCountry(ctx context.Context, country string) ([]forexfactory.Event, error) {
+// GetEventsByCurrency retrieves events matching a specific currency code.
+func (p *PostgresStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexfactory.Event, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
 
 	rows, err := p.db.QueryContext(ctx, `
-		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
 		FROM events 
-		WHERE UPPER(country) = $1
+		WHERE UPPER(currency) = $1
 		ORDER BY date ASC
-	`, strings.ToUpper(strings.TrimSpace(country)))
+	`, strings.ToUpper(strings.TrimSpace(currency)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to query events by country: %w", err)
+		return nil, fmt.Errorf("failed to query events by currency: %w", err)
 	}
 	defer rows.Close()
 
@@ -181,7 +181,7 @@ func (p *PostgresStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 	var args []interface{}
 	paramIndex := 1
 
-	queryParts = append(queryParts, "SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
+	queryParts = append(queryParts, "SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
 
 	if filter.StartDate != nil {
 		queryParts = append(queryParts, fmt.Sprintf("AND date >= $%d", paramIndex))
@@ -194,14 +194,14 @@ func (p *PostgresStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 		paramIndex++
 	}
 
-	if len(filter.Countries) > 0 {
+	if len(filter.Currencies) > 0 {
 		var placeholders []string
-		for _, c := range filter.Countries {
+		for _, c := range filter.Currencies {
 			placeholders = append(placeholders, fmt.Sprintf("$%d", paramIndex))
 			args = append(args, strings.ToUpper(strings.TrimSpace(c)))
 			paramIndex++
 		}
-		queryParts = append(queryParts, fmt.Sprintf("AND country IN (%s)", strings.Join(placeholders, ",")))
+		queryParts = append(queryParts, fmt.Sprintf("AND currency IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(filter.Impacts) > 0 {
@@ -245,7 +245,7 @@ func (p *PostgresStorage) scanEvents(rows *sql.Rows) ([]forexfactory.Event, erro
 		err := rows.Scan(
 			&e.ID,
 			&e.Title,
-			&e.Country,
+			&e.Currency,
 			&e.Date,
 			&impactStr,
 			&e.Forecast,

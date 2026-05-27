@@ -39,7 +39,7 @@ func main() {
 			timeStr = e.Date.Format("2006-01-02") + " [Tentative]"
 		}
 
-		fmt.Printf("[%02d] [%s] %-3s | %-6s | %s\n", i+1, timeStr, e.Country, e.Impact, e.Title)
+		fmt.Printf("[%02d] [%s] %-3s | %-6s | %s\n", i+1, timeStr, e.Currency, e.Impact, e.Title)
 		if e.Actual != "" || e.Forecast != "" || e.Previous != "" {
 			fmt.Printf("     └─ Actual: %-8s | Forecast: %-8s | Previous: %s\n", e.Actual, e.Forecast, e.Previous)
 		}

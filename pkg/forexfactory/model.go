@@ -27,8 +27,8 @@ type Event struct {
 	ID string `json:"id,omitempty"`
 	// Title is the name of the economic news event (e.g., "CPI m/m").
 	Title string `json:"title"`
-	// Country is the currency code affected (e.g., "USD", "EUR", "GBP").
-	Country string `json:"country"`
+	// Currency is the currency code affected (e.g., "USD", "EUR", "GBP").
+	Currency string `json:"currency"`
 	// Date represents the start time of the event.
 	Date time.Time `json:"date"`
 	// Impact is the volatility threat classification.
@@ -103,4 +103,3 @@ func ParseFloat(val string) (float64, error) {
 
 	return parsed * multiplier, nil
 }
-

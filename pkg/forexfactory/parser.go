@@ -22,9 +22,9 @@ type XMLEvents struct {
 type XMLEvent struct {
 	Title    string `xml:"title"`
 	Country  string `xml:"country"`
-	Date     string `xml:"date"`     // Format: MM-DD-YYYY (e.g., 05-26-2026)
-	Time     string `xml:"time"`     // Format: 10:00am, All Day, Tentative, etc.
-	Impact   string `xml:"impact"`   // High, Medium, Low, Holiday
+	Date     string `xml:"date"`   // Format: MM-DD-YYYY (e.g., 05-26-2026)
+	Time     string `xml:"time"`   // Format: 10:00am, All Day, Tentative, etc.
+	Impact   string `xml:"impact"` // High, Medium, Low, Holiday
 	Forecast string `xml:"forecast"`
 	Previous string `xml:"previous"`
 	Actual   string `xml:"actual"`
@@ -49,7 +49,7 @@ func ParseXML(data []byte, targetLoc *time.Location) ([]Event, error) {
 	for _, x := range xmlFeed.Events {
 		e := Event{
 			Title:    strings.TrimSpace(x.Title),
-			Country:  strings.TrimSpace(x.Country),
+			Currency: strings.TrimSpace(x.Country),
 			Forecast: strings.TrimSpace(x.Forecast),
 			Previous: strings.TrimSpace(x.Previous),
 			Actual:   strings.TrimSpace(x.Actual),
@@ -203,7 +203,7 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 		e := Event{
 			ID:       detailID,
 			Title:    title,
-			Country:  currency,
+			Currency: currency,
 			Impact:   impact,
 			Forecast: forecast,
 			Previous: previous,
@@ -364,7 +364,7 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 		e := Event{
 			ID:       detailID,
 			Title:    title,
-			Country:  currency,
+			Currency: currency,
 			Impact:   impact,
 			Forecast: forecast,
 			Previous: previous,

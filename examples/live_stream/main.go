@@ -48,7 +48,7 @@ func updateLiveFeed(client *forexfactory.Client) {
 		// Only display high-impact events for preview
 		if e.Impact == forexfactory.ImpactHigh {
 			timeStr := e.Date.Format("2006-01-02 15:04 UTC")
-			fmt.Printf("🔴 [%s] %-3s | %s\n", timeStr, e.Country, e.Title)
+			fmt.Printf("🔴 [%s] %-3s | %s\n", timeStr, e.Currency, e.Title)
 			if e.Actual != "" || e.Forecast != "" {
 				fmt.Printf("   └─ Actual: %-8s | Forecast: %-8s | Previous: %s\n", e.Actual, e.Forecast, e.Previous)
 			}

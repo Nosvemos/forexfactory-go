@@ -37,7 +37,7 @@ func NewInfluxDBStorage(serverURL, token, org, bucket string) *InfluxDBStorage {
 // Init creates the InfluxDB client and initializes the read/write APIs.
 func (i *InfluxDBStorage) Init(ctx context.Context) error {
 	client := influxdb2.NewClient(i.serverURL, i.token)
-	
+
 	// Perform server health check
 	ok, err := client.Ping(ctx)
 	if err != nil || !ok {
@@ -61,14 +61,14 @@ func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []forexfactory.
 	for _, e := range events {
 		eventID := e.ID
 		if eventID == "" {
-			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Country, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
 			h := sha256.Sum256([]byte(hashInput))
 			eventID = fmt.Sprintf("fallback-%x", h[:8])
 		}
 
 		// Tags: dimensions we want to group or query on
 		tags := map[string]string{
-			"country":      strings.ToUpper(e.Country),
+			"currency":     strings.ToUpper(e.Currency),
 			"impact":       string(e.Impact),
 			"is_all_day":   strconv.FormatBool(e.IsAllDay),
 			"is_tentative": strconv.FormatBool(e.IsTentative),
@@ -104,23 +104,23 @@ func (i *InfluxDBStorage) GetEvents(ctx context.Context, start, end time.Time) (
 		from(bucket: "%s")
 			|> range(start: %s, stop: %s)
 			|> filter(fn: (r) => r["_measurement"] == "economic_events")
-			|> pivot(rowKey:["_time", "country", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
+			|> pivot(rowKey:["_time", "currency", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
 			|> sort(columns: ["_time"])
 	`, i.bucket, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
 	return i.executeFluxQuery(ctx, fluxQuery)
 }
 
-// GetEventsByCountry retrieves events matching a specific currency/country code.
-func (i *InfluxDBStorage) GetEventsByCountry(ctx context.Context, country string) ([]forexfactory.Event, error) {
-	// Query historical data (last 5 years to ensure full historical coverage of country events)
+// GetEventsByCurrency retrieves events matching a specific currency code.
+func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexfactory.Event, error) {
+	// Query historical data (last 5 years to ensure full historical coverage of currency events)
 	fluxQuery := fmt.Sprintf(`
 		from(bucket: "%s")
 			|> range(start: -5y)
-			|> filter(fn: (r) => r["_measurement"] == "economic_events" and r["country"] == "%s")
-			|> pivot(rowKey:["_time", "country", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
+			|> filter(fn: (r) => r["_measurement"] == "economic_events" and r["currency"] == "%s")
+			|> pivot(rowKey:["_time", "currency", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
 			|> sort(columns: ["_time"])
-	`, i.bucket, strings.ToUpper(strings.TrimSpace(country)))
+	`, i.bucket, strings.ToUpper(strings.TrimSpace(currency)))
 
 	return i.executeFluxQuery(ctx, fluxQuery)
 }
@@ -140,10 +140,10 @@ func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 	var filterConditions []string
 	filterConditions = append(filterConditions, `r["_measurement"] == "economic_events"`)
 
-	if len(filter.Countries) > 0 {
+	if len(filter.Currencies) > 0 {
 		var sub []string
-		for _, c := range filter.Countries {
-			sub = append(sub, fmt.Sprintf(`r["country"] == "%s"`, strings.ToUpper(strings.TrimSpace(c))))
+		for _, c := range filter.Currencies {
+			sub = append(sub, fmt.Sprintf(`r["currency"] == "%s"`, strings.ToUpper(strings.TrimSpace(c))))
 		}
 		filterConditions = append(filterConditions, fmt.Sprintf("(%s)", strings.Join(sub, " or ")))
 	}
@@ -160,7 +160,7 @@ func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 		from(bucket: "%s")
 			|> range(start: %s, stop: %s)
 			|> filter(fn: (r) => %s)
-			|> pivot(rowKey:["_time", "country", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
+			|> pivot(rowKey:["_time", "currency", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
 			|> sort(columns: ["_time"])
 	`, i.bucket, startStr, stopStr, strings.Join(filterConditions, " and "))
 
@@ -191,16 +191,16 @@ func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string
 
 	for result.Next() {
 		record := result.Record()
-		
+
 		var e forexfactory.Event
-		
+
 		// Map tags
-		e.Country = record.ValueByKey("country").(string)
+		e.Currency = record.ValueByKey("currency").(string)
 		e.Impact = forexfactory.Impact(record.ValueByKey("impact").(string))
-		
+
 		allDayStr, _ := record.ValueByKey("is_all_day").(string)
 		e.IsAllDay = allDayStr == "true"
-		
+
 		tentativeStr, _ := record.ValueByKey("is_tentative").(string)
 		e.IsTentative = tentativeStr == "true"
 

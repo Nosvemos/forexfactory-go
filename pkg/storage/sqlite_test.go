@@ -28,7 +28,7 @@ func TestSQLiteStorage(t *testing.T) {
 		{
 			ID:          "998877",
 			Title:       "FOMC Press Conference",
-			Country:     "USD",
+			Currency:    "USD",
 			Date:        time.Date(2026, time.May, 26, 14, 30, 0, 0, time.UTC),
 			Impact:      forexfactory.ImpactHigh,
 			Forecast:    "",
@@ -40,7 +40,7 @@ func TestSQLiteStorage(t *testing.T) {
 		{
 			ID:          "", // Testing auto-generated ID
 			Title:       "French CPI m/m",
-			Country:     "EUR",
+			Currency:    "EUR",
 			Date:        time.Date(2026, time.May, 26, 8, 45, 0, 0, time.UTC),
 			Impact:      forexfactory.ImpactMedium,
 			Forecast:    "0.2%",
@@ -67,21 +67,21 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Errorf("Expected 2 events from GetEvents, got %d", len(events))
 	}
 
-	// 4. Test GetEventsByCountry
-	usdEvents, err := store.GetEventsByCountry(ctx, "usd")
+	// 4. Test GetEventsByCurrency
+	usdEvents, err := store.GetEventsByCurrency(ctx, "usd")
 	if err != nil {
-		t.Fatalf("GetEventsByCountry failed: %v", err)
+		t.Fatalf("GetEventsByCurrency failed: %v", err)
 	}
 	if len(usdEvents) != 1 || usdEvents[0].Title != "FOMC Press Conference" {
-		t.Errorf("GetEventsByCountry failed to return USD events correctly")
+		t.Errorf("GetEventsByCurrency failed to return USD events correctly")
 	}
 
 	// 4.5. Test QueryEvents with dynamic QueryFilter
 	filter := QueryFilter{
-		StartDate: &startQuery,
-		EndDate:   &endQuery,
-		Countries: []string{"USD"},
-		Impacts:   []forexfactory.Impact{forexfactory.ImpactHigh},
+		StartDate:  &startQuery,
+		EndDate:    &endQuery,
+		Currencies: []string{"USD"},
+		Impacts:    []forexfactory.Impact{forexfactory.ImpactHigh},
 	}
 	highUsdEvents, err := store.QueryEvents(ctx, filter)
 	if err != nil {
@@ -103,21 +103,21 @@ func TestSQLiteStorage(t *testing.T) {
 	}
 	defer db.Close()
 
-	var title, country, date, impact string
+	var title, currency, date, impact string
 	var allDay, tentative int
-	err = db.QueryRow("SELECT title, country, date, impact, all_day, tentative FROM events WHERE id = '998877'").
-		Scan(&title, &country, &date, &impact, &allDay, &tentative)
+	err = db.QueryRow("SELECT title, currency, date, impact, all_day, tentative FROM events WHERE id = '998877'").
+		Scan(&title, &currency, &date, &impact, &allDay, &tentative)
 	if err != nil {
 		t.Fatalf("Failed to query inserted event: %v", err)
 	}
 
-	if title != "FOMC Press Conference" || country != "USD" || impact != "High" {
-		t.Errorf("Ingested data mismatch: %s / %s / %s", title, country, impact)
+	if title != "FOMC Press Conference" || currency != "USD" || impact != "High" {
+		t.Errorf("Ingested data mismatch: %s / %s / %s", title, currency, impact)
 	}
 
 	// Verify auto-generated key row exists
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM events WHERE country = 'EUR'").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM events WHERE currency = 'EUR'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query auto-generated row: %v", err)
 	}

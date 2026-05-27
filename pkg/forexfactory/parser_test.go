@@ -45,8 +45,8 @@ func TestParseXML(t *testing.T) {
 	if e1.Title != "Core Durable Goods Orders m/m" {
 		t.Errorf("Expected Title 'Core Durable Goods Orders m/m', got '%s'", e1.Title)
 	}
-	if e1.Country != "USD" {
-		t.Errorf("Expected Country 'USD', got '%s'", e1.Country)
+	if e1.Currency != "USD" {
+		t.Errorf("Expected Currency 'USD', got '%s'", e1.Currency)
 	}
 	if e1.Impact != ImpactHigh {
 		t.Errorf("Expected ImpactHigh, got '%s'", e1.Impact)
@@ -67,8 +67,8 @@ func TestParseXML(t *testing.T) {
 	if e2.Title != "French Bank Holiday" {
 		t.Errorf("Expected Title 'French Bank Holiday', got '%s'", e2.Title)
 	}
-	if e2.Country != "EUR" {
-		t.Errorf("Expected Country 'EUR', got '%s'", e2.Country)
+	if e2.Currency != "EUR" {
+		t.Errorf("Expected Currency 'EUR', got '%s'", e2.Currency)
 	}
 	if e2.Impact != ImpactNone {
 		t.Errorf("Expected ImpactNone, got '%s'", e2.Impact)
@@ -124,8 +124,8 @@ func TestParseHTML(t *testing.T) {
 	if e1.Title != "CB Consumer Confidence" {
 		t.Errorf("Expected Title 'CB Consumer Confidence', got '%s'", e1.Title)
 	}
-	if e1.Country != "USD" {
-		t.Errorf("Expected Country 'USD', got '%s'", e1.Country)
+	if e1.Currency != "USD" {
+		t.Errorf("Expected Currency 'USD', got '%s'", e1.Currency)
 	}
 	if e1.Impact != ImpactHigh {
 		t.Errorf("Expected ImpactHigh, got '%s'", e1.Impact)
@@ -143,8 +143,8 @@ func TestParseHTML(t *testing.T) {
 	if e2.Title != "German Ifo Business Climate" {
 		t.Errorf("Expected Title 'German Ifo Business Climate', got '%s'", e2.Title)
 	}
-	if e2.Country != "EUR" {
-		t.Errorf("Expected Country 'EUR', got '%s'", e2.Country)
+	if e2.Currency != "EUR" {
+		t.Errorf("Expected Currency 'EUR', got '%s'", e2.Currency)
 	}
 	if e2.Impact != ImpactMedium {
 		t.Errorf("Expected ImpactMedium, got '%s'", e2.Impact)

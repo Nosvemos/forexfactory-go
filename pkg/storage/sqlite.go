@@ -50,7 +50,7 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS events (
 		id TEXT PRIMARY KEY,
 		title TEXT,
-		country TEXT,
+		currency TEXT,
 		date TEXT,
 		impact TEXT,
 		forecast TEXT,
@@ -60,7 +60,7 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 		tentative INTEGER
 	);
 	CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
-	CREATE INDEX IF NOT EXISTS idx_events_country ON events(country);
+	CREATE INDEX IF NOT EXISTS idx_events_currency ON events(currency);
 	`
 
 	_, err = s.db.ExecContext(ctx, schema)
@@ -84,7 +84,7 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []forexfactory.Ev
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO events (
-			id, title, country, date, impact, forecast, previous, actual, all_day, tentative
+			id, title, currency, date, impact, forecast, previous, actual, all_day, tentative
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -105,8 +105,8 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []forexfactory.Ev
 
 		eventID := e.ID
 		if eventID == "" {
-			// Generate standard unique hash based on timestamp, country, event name, impact and forecast to prevent collisions
-			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Country, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+			// Generate standard unique hash based on timestamp, currency, event name, impact and forecast to prevent collisions
+			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
 			h := sha256.Sum256([]byte(hashInput))
 			eventID = fmt.Sprintf("fallback-%x", h[:8])
 		}
@@ -114,7 +114,7 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []forexfactory.Ev
 		_, err = stmt.ExecContext(ctx,
 			eventID,
 			e.Title,
-			e.Country,
+			e.Currency,
 			e.Date.Format(time.RFC3339),
 			string(e.Impact),
 			e.Forecast,
@@ -155,7 +155,7 @@ func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]
 	endStr := end.Format(time.RFC3339)
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
 		FROM events 
 		WHERE date >= ? AND date <= ?
 		ORDER BY date ASC
@@ -168,20 +168,20 @@ func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]
 	return scanEvents(rows)
 }
 
-// GetEventsByCountry retrieves events matching a specific currency/country code.
-func (s *SQLiteStorage) GetEventsByCountry(ctx context.Context, country string) ([]forexfactory.Event, error) {
+// GetEventsByCurrency retrieves events matching a specific currency code.
+func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexfactory.Event, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
 		FROM events 
-		WHERE country = ?
+		WHERE currency = ?
 		ORDER BY date ASC
-	`, strings.ToUpper(strings.TrimSpace(country)))
+	`, strings.ToUpper(strings.TrimSpace(currency)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to query events by country: %w", err)
+		return nil, fmt.Errorf("failed to query events by currency: %w", err)
 	}
 	defer rows.Close()
 
@@ -198,7 +198,7 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 	var args []interface{}
 
 	// Base query
-	queryParts = append(queryParts, "SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
+	queryParts = append(queryParts, "SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
 
 	if filter.StartDate != nil {
 		queryParts = append(queryParts, "AND date >= ?")
@@ -209,13 +209,13 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 		args = append(args, filter.EndDate.Format(time.RFC3339))
 	}
 
-	if len(filter.Countries) > 0 {
+	if len(filter.Currencies) > 0 {
 		var placeholders []string
-		for _, c := range filter.Countries {
+		for _, c := range filter.Currencies {
 			placeholders = append(placeholders, "?")
 			args = append(args, strings.ToUpper(strings.TrimSpace(c)))
 		}
-		queryParts = append(queryParts, fmt.Sprintf("AND country IN (%s)", strings.Join(placeholders, ",")))
+		queryParts = append(queryParts, fmt.Sprintf("AND currency IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(filter.Impacts) > 0 {
@@ -239,7 +239,6 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 	return scanEvents(rows)
 }
 
-
 // scanEvents is a helper function that reads database rows into Event structs.
 func scanEvents(rows *sql.Rows) ([]forexfactory.Event, error) {
 	var events []forexfactory.Event
@@ -253,7 +252,7 @@ func scanEvents(rows *sql.Rows) ([]forexfactory.Event, error) {
 		err := rows.Scan(
 			&e.ID,
 			&e.Title,
-			&e.Country,
+			&e.Currency,
 			&dateStr,
 			&impactStr,
 			&e.Forecast,

@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	discordWebhookFlag string
+	discordWebhookFlag  string
 	telegramTokenFlag   string
 	telegramChatFlag    string
 	pollingIntervalFlag time.Duration
@@ -148,8 +148,8 @@ func checkAndAlert(client *forexfactory.Client, minImpact forexfactory.Impact) {
 		// Target release time
 		releaseTime := e.Date.UTC()
 
-		// Generate a unique cache key based on timestamp, country, and title
-		cacheKey := fmt.Sprintf("%d-%s-%s", releaseTime.Unix(), e.Country, strings.ToLower(e.Title))
+		// Generate a unique cache key based on timestamp, currency, and title
+		cacheKey := fmt.Sprintf("%d-%s-%s", releaseTime.Unix(), e.Currency, strings.ToLower(e.Title))
 
 		cacheMu.Lock()
 		_, alreadyNotified := notifiedCache[cacheKey]
@@ -163,8 +163,8 @@ func checkAndAlert(client *forexfactory.Client, minImpact forexfactory.Impact) {
 		if (releaseTime.After(now) || releaseTime.Equal(now)) && (releaseTime.Before(alertThreshold) || releaseTime.Equal(alertThreshold)) {
 			// Alert upcoming event
 			minutesRemaining := int(releaseTime.Sub(now).Minutes())
-			fmt.Printf("[%s] Upcoming Event Alert in %d minutes: %s | %s | %s\n", 
-				time.Now().Format("15:04:05"), minutesRemaining, e.Country, string(e.Impact), e.Title)
+			fmt.Printf("[%s] Upcoming Event Alert in %d minutes: %s | %s | %s\n",
+				time.Now().Format("15:04:05"), minutesRemaining, e.Currency, string(e.Impact), e.Title)
 
 			var wg sync.WaitGroup
 			if discordWebhookFlag != "" {
@@ -311,7 +311,7 @@ func sendDiscordAlert(e forexfactory.Event, minutesLeft int) error {
 				"description": fmt.Sprintf("**%s** is releasing in **%d minutes**!", e.Title, minutesLeft),
 				"color":       color,
 				"fields": []map[string]interface{}{
-					{"name": "Currency", "value": e.Country, "inline": true},
+					{"name": "Currency", "value": e.Currency, "inline": true},
 					{"name": "Volatility threat", "value": string(e.Impact), "inline": true},
 					{"name": "Scheduled Time", "value": timeFormatted, "inline": true},
 					{"name": "Consensus forecast", "value": getValOrDash(e.Forecast), "inline": true},
@@ -367,7 +367,7 @@ func sendTelegramAlert(e forexfactory.Event, minutesLeft int) error {
 		emoji,
 		escapeMarkdown(e.Title),
 		minutesLeft,
-		escapeMarkdown(e.Country),
+		escapeMarkdown(e.Currency),
 		escapeMarkdown(e.Date.UTC().Format("15:04 UTC")),
 		escapeMarkdown(string(e.Impact)),
 		escapeMarkdown(getValOrDash(e.Forecast)),

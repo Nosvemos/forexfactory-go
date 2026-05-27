@@ -14,6 +14,7 @@ import (
 
 	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
 	"github.com/Nosvemos/forexfactory-go/pkg/storage"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +38,9 @@ var (
 
 	// Global silent flag
 	silentFlag bool
+
+	// Chrome options
+	headlessFlag bool
 )
 
 var rootCmd = &cobra.Command{
@@ -87,6 +91,7 @@ func init() {
 	downloadCmd.Flags().StringVar(&cookieFlag, "cookie", "", "Cloudflare clearance cookie (cf_clearance=...) to bypass anti-bot blocks")
 
 	downloadCmd.Flags().BoolVarP(&silentFlag, "silent", "q", false, "Mute all logging and progress outputs")
+	downloadCmd.Flags().BoolVar(&headlessFlag, "headless", true, "Use headless browser mode for Cloudflare bypass (automatically falls back to headed mode if blocked)")
 	_ = downloadCmd.MarkFlagRequired("start")
 	_ = downloadCmd.MarkFlagRequired("end")
 
@@ -99,6 +104,7 @@ func init() {
 	dbloadCmd.Flags().StringVar(&cookieFlag, "cookie", "", "Cloudflare clearance cookie (cf_clearance=...) to bypass anti-bot blocks")
 	dbloadCmd.Flags().StringVarP(&dbFlag, "db", "d", "forexfactory.db", "SQLite database file path")
 	dbloadCmd.Flags().BoolVarP(&silentFlag, "silent", "q", false, "Mute all logging and progress outputs")
+	dbloadCmd.Flags().BoolVar(&headlessFlag, "headless", true, "Use headless browser mode for Cloudflare bypass (automatically falls back to headed mode if blocked)")
 
 	_ = dbloadCmd.MarkFlagRequired("start")
 	_ = dbloadCmd.MarkFlagRequired("end")
@@ -130,6 +136,7 @@ func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Locat
 	if cookieFlag != "" {
 		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cookieFlag))
 	}
+	clientOpts = append(clientOpts, forexfactory.WithHeadless(headlessFlag))
 
 	if !silentFlag {
 		// Dynamic visual progress callback
@@ -319,12 +326,19 @@ func fetchAndPrintLive(client *forexfactory.Client) {
 	}
 
 	fmt.Println()
-	fmt.Printf("\033[1;36m┌%s┐\033[0m\n", strings.Repeat("─", 88))
-	headerText := fmt.Sprintf(" FOREX FACTORY LIVE WEEKLY ECONOMIC CALENDAR (%s) ", tzName)
-	padding := (88 - len(headerText)) / 2
-	if padding < 0 { padding = 0 }
-	fmt.Printf("\033[1;36m│\033[0m%s\033[1;35m%s\033[0m%s\033[1;36m│\033[0m\n", strings.Repeat(" ", padding), headerText, strings.Repeat(" ", 88-len(headerText)-padding))
-	fmt.Printf("\033[1;36m├%s┤\033[0m\n", strings.Repeat("─", 88))
+	fmt.Printf("\033[1;36m=== FOREX FACTORY LIVE WEEKLY ECONOMIC CALENDAR (%s) ===\033[0m\n", tzName)
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Date & Time", "Currency", "Impact", "Haber / Gelişme", "Actual", "Forecast", "Previous"})
+	table.SetAutoWrapText(true)
+	table.SetBorder(true)
+	table.SetCenterSeparator("┼")
+	table.SetColumnSeparator("│")
+	table.SetRowSeparator("─")
+
+	// Header Styling: Cyan headers
+	cyanHeader := tablewriter.Colors{tablewriter.Bold, tablewriter.FgCyanColor}
+	table.SetHeaderColor(cyanHeader, cyanHeader, cyanHeader, cyanHeader, cyanHeader, cyanHeader, cyanHeader)
 
 	for _, e := range events {
 		timeStr := e.Date.Format("2006-01-02 15:04")
@@ -335,38 +349,69 @@ func fetchAndPrintLive(client *forexfactory.Client) {
 		}
 
 		var impactStr string
+		var impactColor tablewriter.Colors
 		switch e.Impact {
 		case forexfactory.ImpactHigh:
-			impactStr = "\033[1;31m🔴 HIGH\033[0m  "
+			impactStr = "🔴 HIGH"
+			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgRedColor}
 		case forexfactory.ImpactMedium:
-			impactStr = "\033[1;33m🟡 MEDIUM\033[0m"
+			impactStr = "🟡 MEDIUM"
+			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgYellowColor}
 		case forexfactory.ImpactLow:
-			impactStr = "\033[1;32m🟢 LOW\033[0m   "
+			impactStr = "🟢 LOW"
+			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgGreenColor}
 		default:
-			impactStr = "\033[1;90m⚪ NONE\033[0m  "
+			impactStr = "⚪ NONE"
+			impactColor = tablewriter.Colors{tablewriter.FgHiBlackColor}
 		}
 
-		titleText := e.Title
-		if len(titleText) > 42 {
-			titleText = titleText[:39] + "..."
+		act := e.Actual
+		if act == "" {
+			act = "-"
 		}
-		
-		fmt.Printf("\033[1;36m│\033[0m [\033[1;37m%-16s\033[0m] \033[1;34m%-3s\033[0m │ %s │ \033[1m%-42s\033[0m \033[1;36m│\033[0m\n", 
-			timeStr, e.Country, impactStr, titleText)
-
-		if e.Actual != "" || e.Forecast != "" || e.Previous != "" {
-			act := e.Actual
-			if act == "" { act = "-" }
-			forc := e.Forecast
-			if forc == "" { forc = "-" }
-			prev := e.Previous
-			if prev == "" { prev = "-" }
-
-			fmt.Printf("\033[1;36m│\033[0m      \033[90m└─ Actual:\033[0m \033[1;32m%-10s\033[0m \033[90mForecast:\033[0m \033[1;33m%-10s\033[0m \033[90mPrevious:\033[0m \033[1;37m%-10s\033[0m \033[1;36m│\033[0m\n", 
-				act, forc, prev)
+		forc := e.Forecast
+		if forc == "" {
+			forc = "-"
 		}
+		prev := e.Previous
+		if prev == "" {
+			prev = "-"
+		}
+
+		// Premium quant feature: compare Actual and Forecast dynamically to color cells!
+		actColor := tablewriter.Colors{}
+		if act != "-" && forc != "-" {
+			actualVal, err1 := forexfactory.ParseFloat(act)
+			forecastVal, err2 := forexfactory.ParseFloat(forc)
+			if err1 == nil && err2 == nil {
+				if actualVal > forecastVal {
+					actColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgGreenColor}
+				} else if actualVal < forecastVal {
+					actColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgRedColor}
+				}
+			}
+		}
+
+		table.Rich([]string{
+			timeStr,
+			e.Currency,
+			impactStr,
+			e.Title,
+			act,
+			forc,
+			prev,
+		}, []tablewriter.Colors{
+			{}, // Time
+			{tablewriter.Bold, tablewriter.FgHiCyanColor}, // Currency
+			impactColor,        // Impact
+			{tablewriter.Bold}, // Title
+			actColor,           // Actual (beats: green, misses: red)
+			{},                 // Forecast
+			{},                 // Previous
+		})
 	}
-	fmt.Printf("\033[1;36m└%s┘\033[0m\n", strings.Repeat("─", 88))
+
+	table.Render()
 	fmt.Println()
 }
 
@@ -374,7 +419,7 @@ func writeCSV(w io.Writer, events []forexfactory.Event) error {
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
-	err := writer.Write([]string{"id", "title", "country", "date", "impact", "forecast", "previous", "actual", "all_day", "tentative"})
+	err := writer.Write([]string{"id", "title", "currency", "date", "impact", "forecast", "previous", "actual", "all_day", "tentative"})
 	if err != nil {
 		return err
 	}
@@ -383,7 +428,7 @@ func writeCSV(w io.Writer, events []forexfactory.Event) error {
 		err = writer.Write([]string{
 			e.ID,
 			e.Title,
-			e.Country,
+			e.Currency,
 			e.Date.Format(time.RFC3339),
 			string(e.Impact),
 			e.Forecast,

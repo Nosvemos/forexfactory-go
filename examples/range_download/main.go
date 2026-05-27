@@ -59,9 +59,9 @@ func main() {
 
 	// 6. Query the database using the new Storage SDK query APIs
 	fmt.Println("\n--- Querying DB: High Impact USD Events ---")
-	dbEvents, err := store.GetEventsByCountry(ctx, "USD")
+	dbEvents, err := store.GetEventsByCurrency(ctx, "USD")
 	if err != nil {
-		log.Fatalf("Failed to query events by country: %v", err)
+		log.Fatalf("Failed to query events by currency: %v", err)
 	}
 
 	count := 0

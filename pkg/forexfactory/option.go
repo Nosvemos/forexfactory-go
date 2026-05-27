@@ -98,3 +98,9 @@ func WithImpacts(impacts ...Impact) Option {
 	}
 }
 
+// WithHeadless returns an Option that configures whether chromedp runs in headless mode.
+func WithHeadless(headless bool) Option {
+	return func(c *Client) {
+		c.headless = headless
+	}
+}

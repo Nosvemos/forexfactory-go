@@ -29,7 +29,7 @@ def main():
         
         if not df.empty:
             print("\nPandas DataFrame Head:")
-            print(df[["date", "country", "impact", "title", "forecast", "actual"]].head(10))
+            print(df[["date", "currency", "impact", "title", "forecast", "actual"]].head(10))
             
             # Save to a local CSV file using Pandas
             df.to_csv("calendar_scraped_via_python.csv", index=False)

@@ -67,7 +67,7 @@ func TestClientOfflineMockScrape(t *testing.T) {
 	mockTransport := &mockRoundTripper{
 		roundTripFunc: func(req *http.Request) (*http.Response, error) {
 			urlStr := req.URL.String()
-			
+
 			if strings.Contains(urlStr, "ff_calendar_thisweek.xml") {
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -115,12 +115,12 @@ func TestClientOfflineMockScrape(t *testing.T) {
 	}
 
 	usdEvent := liveEvents[0]
-	if usdEvent.Title != "Mock Interest Rate Decision" || usdEvent.Country != "USD" || usdEvent.Impact != ImpactHigh {
+	if usdEvent.Title != "Mock Interest Rate Decision" || usdEvent.Currency != "USD" || usdEvent.Impact != ImpactHigh {
 		t.Errorf("Mismatch in parsed USD XML live event data: %+v", usdEvent)
 	}
 
 	eurEvent := liveEvents[1]
-	if eurEvent.Country != "EUR" || !eurEvent.IsAllDay || eurEvent.Impact != ImpactMedium {
+	if eurEvent.Currency != "EUR" || !eurEvent.IsAllDay || eurEvent.Impact != ImpactMedium {
 		t.Errorf("Mismatch in parsed EUR XML live event data: %+v", eurEvent)
 	}
 
