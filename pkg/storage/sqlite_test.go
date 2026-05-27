@@ -76,6 +76,21 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Errorf("GetEventsByCountry failed to return USD events correctly")
 	}
 
+	// 4.5. Test QueryEvents with dynamic QueryFilter
+	filter := QueryFilter{
+		StartDate: &startQuery,
+		EndDate:   &endQuery,
+		Countries: []string{"USD"},
+		Impacts:   []forexfactory.Impact{forexfactory.ImpactHigh},
+	}
+	highUsdEvents, err := store.QueryEvents(ctx, filter)
+	if err != nil {
+		t.Fatalf("QueryEvents failed: %v", err)
+	}
+	if len(highUsdEvents) != 1 || highUsdEvents[0].Title != "FOMC Press Conference" {
+		t.Errorf("QueryEvents failed to filter correctly: expected 1 FOMC event, got %d", len(highUsdEvents))
+	}
+
 	// 5. Close connection
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)

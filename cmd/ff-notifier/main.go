@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -92,6 +93,9 @@ func executeNotifier() {
 	client := forexfactory.NewClient(
 		forexfactory.WithTimeLocation(time.UTC),
 	)
+
+	// Load previously notified events cache to prevent duplicate alerts on restart
+	loadNotifiedCache()
 
 	// Clean cache worker to prevent memory bloat over days
 	go runCacheCleaner()
@@ -189,6 +193,8 @@ func checkAndAlert(client *forexfactory.Client, minImpact forexfactory.Impact) {
 			cacheMu.Lock()
 			notifiedCache[cacheKey] = releaseTime
 			cacheMu.Unlock()
+
+			saveNotifiedCache()
 		}
 	}
 }
@@ -214,14 +220,71 @@ func runCacheCleaner() {
 	for range ticker.C {
 		now := time.Now().UTC()
 		cacheMu.Lock()
+		changed := false
 		for key, releaseTime := range notifiedCache {
 			// Evict events that passed more than 1 hour ago
 			if now.Sub(releaseTime) > 1*time.Hour {
 				delete(notifiedCache, key)
+				changed = true
 			}
 		}
 		cacheMu.Unlock()
+
+		if changed {
+			saveNotifiedCache()
+		}
 	}
+}
+
+func getNotifierCacheFilePath() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	dir := filepath.Join(cacheDir, "forexfactory-go")
+	_ = os.MkdirAll(dir, 0700)
+	return filepath.Join(dir, "notified_cache.json")
+}
+
+func loadNotifiedCache() {
+	path := getNotifierCacheFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	var tempMap map[string]string
+	if err := json.Unmarshal(data, &tempMap); err != nil {
+		return
+	}
+
+	// Convert loaded string times back to time.Time
+	for k, v := range tempMap {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			notifiedCache[k] = t
+		}
+	}
+}
+
+func saveNotifiedCache() {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	tempMap := make(map[string]string)
+	for k, v := range notifiedCache {
+		tempMap[k] = v.Format(time.RFC3339)
+	}
+
+	data, err := json.Marshal(tempMap)
+	if err != nil {
+		return
+	}
+
+	path := getNotifierCacheFilePath()
+	_ = os.WriteFile(path, data, 0600)
 }
 
 func sendDiscordAlert(e forexfactory.Event, minutesLeft int) error {

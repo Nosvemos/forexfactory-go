@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -29,6 +30,11 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to open sqlite database %q: %w", s.dbPath, err)
 	}
 	s.db = db
+
+	// Configure connection pool limits to strictly serialize writes and prevent locked states
+	s.db.SetMaxOpenConns(1)
+	s.db.SetMaxIdleConns(1)
+	s.db.SetConnMaxLifetime(time.Hour)
 
 	// Enable WAL (Write-Ahead Logging) mode for concurrent read/write stability
 	if _, err := s.db.ExecContext(ctx, "PRAGMA journal_mode=WAL;"); err != nil {
@@ -99,8 +105,10 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []forexfactory.Ev
 
 		eventID := e.ID
 		if eventID == "" {
-			// Generate standard unique hash based on timestamp, country and event name if detail id is missing
-			eventID = fmt.Sprintf("%d-%s-%s", e.Date.Unix(), e.Country, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"))
+			// Generate standard unique hash based on timestamp, country, event name, impact and forecast to prevent collisions
+			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Country, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+			h := sha256.Sum256([]byte(hashInput))
+			eventID = fmt.Sprintf("fallback-%x", h[:8])
 		}
 
 		_, err = stmt.ExecContext(ctx,
@@ -179,6 +187,58 @@ func (s *SQLiteStorage) GetEventsByCountry(ctx context.Context, country string) 
 
 	return scanEvents(rows)
 }
+
+// QueryEvents retrieves events matching a dynamic filter payload (date range, countries, and impacts).
+func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]forexfactory.Event, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not initialized, call Init() first")
+	}
+
+	var queryParts []string
+	var args []interface{}
+
+	// Base query
+	queryParts = append(queryParts, "SELECT id, title, country, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
+
+	if filter.StartDate != nil {
+		queryParts = append(queryParts, "AND date >= ?")
+		args = append(args, filter.StartDate.Format(time.RFC3339))
+	}
+	if filter.EndDate != nil {
+		queryParts = append(queryParts, "AND date <= ?")
+		args = append(args, filter.EndDate.Format(time.RFC3339))
+	}
+
+	if len(filter.Countries) > 0 {
+		var placeholders []string
+		for _, c := range filter.Countries {
+			placeholders = append(placeholders, "?")
+			args = append(args, strings.ToUpper(strings.TrimSpace(c)))
+		}
+		queryParts = append(queryParts, fmt.Sprintf("AND country IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	if len(filter.Impacts) > 0 {
+		var placeholders []string
+		for _, imp := range filter.Impacts {
+			placeholders = append(placeholders, "?")
+			args = append(args, string(imp))
+		}
+		queryParts = append(queryParts, fmt.Sprintf("AND impact IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	queryParts = append(queryParts, "ORDER BY date ASC")
+	queryStr := strings.Join(queryParts, " ")
+
+	rows, err := s.db.QueryContext(ctx, queryStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events dynamically: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
 
 // scanEvents is a helper function that reads database rows into Event structs.
 func scanEvents(rows *sql.Rows) ([]forexfactory.Event, error) {
