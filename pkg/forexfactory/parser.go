@@ -115,16 +115,18 @@ func ParseXML(data []byte, targetLoc *time.Location) ([]Event, error) {
 	return events, nil
 }
 
-// ParseHTML parses the calendar HTML from an io.Reader.
-// The refYear is needed because the calendar HTML does not contain the year explicitly.
-// By default, Forex Factory lists events in Eastern Standard Time (EST/EDT) or UTC.
-// We parse the HTML assuming the source times are in UTC or EST depending on settings,
-// but for standard scrapers, it parses the visual text. We assume the parsed time is UTC
-// to be stable, and then convert to targetLoc if provided.
-func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, error) {
+// ParseHTMLWithSunday parses the calendar HTML from an io.Reader mapping events to the exact 7-day chronological span of a week.
+// This mathematically eliminates the year-straddling week bug when crossing from December to January.
+func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location) ([]Event, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load HTML document: %w", err)
+	}
+
+	// Calculate the 7 dates for the week Sunday -> Saturday
+	weekDates := make([]time.Time, 7)
+	for i := 0; i < 7; i++ {
+		weekDates[i] = sunday.AddDate(0, 0, i)
 	}
 
 	var events []Event
@@ -224,18 +226,187 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 			cleanDateStr = cleanDateStr[idx+1:]
 		}
 
-		// Format clean date as "May 25 2026"
-		combinedDateStr := fmt.Sprintf("%s %d", cleanDateStr, refYear)
+		// Find exact date in weekDates by matching month and day
+		var eventDate time.Time
+		foundDate := false
+		parsedMD, err := time.Parse("Jan 2", cleanDateStr)
+		if err == nil {
+			for _, d := range weekDates {
+				if d.Month() == parsedMD.Month() && d.Day() == parsedMD.Day() {
+					eventDate = d
+					foundDate = true
+					break
+				}
+			}
+		}
+
+		// Fallback if matching fails
+		if !foundDate {
+			combinedDateStr := fmt.Sprintf("%s %d", cleanDateStr, sunday.Year())
+			eventDate, _ = time.ParseInLocation("Jan 2 2006", combinedDateStr, time.UTC)
+		}
 
 		var parsedTime time.Time
-		sourceLoc := time.UTC // default source is UTC or Eastern, let's assume UTC to match XML feed standard
+		sourceLoc := time.UTC // default source is UTC or Eastern, we align via UTC cookies
+
+		if e.IsAllDay || e.IsTentative {
+			parsedTime = time.Date(eventDate.Year(), eventDate.Month(), eventDate.Day(), 0, 0, 0, 0, sourceLoc)
+		} else {
+			// clean lastTimeStr from characters like "pm", "am"
+			combinedTimeStr := fmt.Sprintf("%d-%02d-%02d %s", eventDate.Year(), eventDate.Month(), eventDate.Day(), strings.ToLower(lastTimeStr))
+			parsedTime, err = time.ParseInLocation("2006-01-02 3:04pm", combinedTimeStr, sourceLoc)
+			if err != nil {
+				parsedTime, err = time.ParseInLocation("2006-01-02 15:04", combinedTimeStr, sourceLoc)
+			}
+			if err != nil {
+				// Fallback to date-only parsing to prevent zero value dates
+				parsedTime = time.Date(eventDate.Year(), eventDate.Month(), eventDate.Day(), 0, 0, 0, 0, sourceLoc)
+			}
+		}
+
+		// Apply target location conversion if provided
+		if targetLoc != nil {
+			e.Date = parsedTime.In(targetLoc)
+		} else {
+			e.Date = parsedTime
+		}
+
+		events = append(events, e)
+	})
+
+	return events, nil
+}
+
+// ParseHTML parses the calendar HTML from an io.Reader.
+// The refYear is needed because the calendar HTML does not contain the year explicitly.
+// By default, it assumes Sunday falls in refYear, and creates a simulated Sunday time.Time
+// to call ParseHTMLWithSunday. It also supports year transition tracking in case of cross-year weeks.
+func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, error) {
+	// Parse with a smart year transition heuristic if Sunday's exact date is not provided
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load HTML document: %w", err)
+	}
+
+	var events []Event
+	var lastDateStr string
+	var lastTimeStr string
+	var previousMonth time.Month = 0
+	currentYear := refYear
+
+	// Iterate over the calendar table rows
+	doc.Find("table.calendar__table tr.calendar__row").Each(func(i int, s *goquery.Selection) {
+		// Skip rows that do not contain an actual event (e.g. header, space rows)
+		currencyCell := s.Find(".calendar__currency")
+		if currencyCell.Length() == 0 {
+			return
+		}
+
+		currency := strings.TrimSpace(currencyCell.Text())
+		title := strings.TrimSpace(s.Find(".calendar__event").Text())
+
+		// If both currency and title are empty, it's not a valid event row
+		if currency == "" && title == "" {
+			return
+		}
+
+		// Extract Date
+		dateCell := s.Find(".calendar__date")
+		dateStr := strings.TrimSpace(dateCell.Text())
+		if dateStr != "" {
+			lastDateStr = dateStr
+		}
+
+		// Extract Time
+		timeCell := s.Find(".calendar__time")
+		timeStr := strings.TrimSpace(timeCell.Text())
+		if timeStr != "" {
+			lastTimeStr = timeStr
+		}
+
+		// Extract Impact
+		impact := ImpactNone
+		impactSpan := s.Find(".calendar__impact span")
+		if impactSpan.Length() > 0 {
+			classAttr, _ := impactSpan.Attr("class")
+			classAttr = strings.ToLower(classAttr)
+			if strings.Contains(classAttr, "red") || strings.Contains(classAttr, "high") {
+				impact = ImpactHigh
+			} else if strings.Contains(classAttr, "orange") || strings.Contains(classAttr, "medium") {
+				impact = ImpactMedium
+			} else if strings.Contains(classAttr, "yellow") || strings.Contains(classAttr, "low") {
+				impact = ImpactLow
+			}
+		}
+
+		// Extract Detail ID
+		var detailID string
+		detailAnchor := s.Find(".calendar__event a")
+		if detailAnchor.Length() > 0 {
+			href, _ := detailAnchor.Attr("href")
+			matches := showIDRegex.FindStringSubmatch(href)
+			if len(matches) > 1 {
+				for _, match := range matches[1:] {
+					if match != "" {
+						detailID = match
+						break
+					}
+				}
+			}
+		}
+
+		// Extract values
+		actual := strings.TrimSpace(s.Find(".calendar__actual").Text())
+		forecast := strings.TrimSpace(s.Find(".calendar__forecast").Text())
+		previous := strings.TrimSpace(s.Find(".calendar__previous").Text())
+
+		// Setup Event struct
+		e := Event{
+			ID:       detailID,
+			Title:    title,
+			Country:  currency,
+			Impact:   impact,
+			Forecast: forecast,
+			Previous: previous,
+			Actual:   actual,
+		}
+
+		// Process Date and Time fields
+		lowTime := strings.ToLower(lastTimeStr)
+		if lowTime == "all day" || lowTime == "holiday" || lowTime == "" {
+			e.IsAllDay = true
+		} else if strings.Contains(lowTime, "tentative") {
+			e.IsTentative = true
+		}
+
+		// Parse combined date and time
+		// lastDateStr format is usually "Mon May 25" or "May 25"
+		// We remove the day prefix (e.g. "Mon ") to make it cleaner
+		cleanDateStr := lastDateStr
+		if idx := strings.Index(cleanDateStr, " "); idx != -1 && idx < 4 {
+			cleanDateStr = cleanDateStr[idx+1:]
+		}
+
+		// Smart Year Straddling detection
+		parsedMD, err := time.Parse("Jan 2", cleanDateStr)
+		if err == nil {
+			if parsedMD.Month() == time.January && previousMonth == time.December {
+				currentYear = refYear + 1
+			}
+			previousMonth = parsedMD.Month()
+		}
+
+		// Format clean date as "May 25 2026"
+		combinedDateStr := fmt.Sprintf("%s %d", cleanDateStr, currentYear)
+
+		var parsedTime time.Time
+		sourceLoc := time.UTC // default source is UTC or Eastern, we align via UTC cookies
 
 		if e.IsAllDay || e.IsTentative {
 			parsedTime, _ = time.ParseInLocation("Jan 2 2006", combinedDateStr, sourceLoc)
 		} else {
 			// clean lastTimeStr from characters like "pm", "am"
 			combinedTimeStr := fmt.Sprintf("%s %s", combinedDateStr, strings.ToLower(lastTimeStr))
-			// e.g. "May 25 2026 8:00am"
 			parsedTime, err = time.ParseInLocation("Jan 2 2006 3:04pm", combinedTimeStr, sourceLoc)
 			if err != nil {
 				parsedTime, err = time.ParseInLocation("Jan 2 2006 15:04", combinedTimeStr, sourceLoc)

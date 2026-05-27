@@ -26,11 +26,13 @@ type Client struct {
 	headers           map[string]string // Custom HTTP headers
 	concurrency       int
 	progressCallback  func(current, total int)
+	impactFilter      map[Impact]bool   // Filter only specific impact levels
 
 	mu          sync.Mutex
 	lastRequest time.Time
 
-	bypassMu sync.Mutex // Mutex specifically to prevent multiple headless instances from solving Cloudflare concurrently
+	bypassMu  sync.Mutex // Mutex specifically to prevent multiple headless instances from solving Cloudflare concurrently
+	browserMu sync.Mutex // Mutex to serialize all browser fallbacks (prevent concurrency storm)
 }
 
 // NewClient creates and initializes a new Client with the provided options.
@@ -138,6 +140,13 @@ func (c *Client) applyHeaders(req *http.Request) {
 	for key, val := range c.headers {
 		req.Header.Set(key, val)
 	}
+
+	// Force UTC timezone and 12-hour format on Forex Factory visual calendar
+	if cookieVal := req.Header.Get("Cookie"); cookieVal == "" {
+		req.Header.Set("Cookie", "fftimezoneoffset=0; fftimeformat=1;")
+	} else if !strings.Contains(cookieVal, "fftimezoneoffset") {
+		req.Header.Set("Cookie", cookieVal+"; fftimezoneoffset=0; fftimeformat=1;")
+	}
 }
 
 // SolveCloudflareChallenge programmatically drives a headless Chrome browser via chromedp
@@ -148,6 +157,8 @@ func (c *Client) SolveCloudflareChallenge() error {
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("excludeSwitches", "enable-automation"),
 	)
 
 	// Inject auto-discovered Chromium path if Chrome/Edge was found on standard system locations
@@ -187,6 +198,10 @@ func (c *Client) SolveCloudflareChallenge() error {
 		if c.headers == nil {
 			c.headers = make(map[string]string)
 		}
+		// Force UTC timezone and 12-hour format on Forex Factory visual calendar
+		if !strings.Contains(cookiesStr, "fftimezoneoffset") {
+			cookiesStr = cookiesStr + "; fftimezoneoffset=0; fftimeformat=1;"
+		}
 		c.headers["Cookie"] = cookiesStr
 		c.mu.Unlock()
 	}
@@ -201,6 +216,8 @@ func (c *Client) FetchWeekViaBrowser(ctx context.Context, targetURL string) ([]b
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("excludeSwitches", "enable-automation"),
 	)
 
 	if extPath := findChromiumPath(); extPath != "" {
@@ -324,18 +341,38 @@ func (c *Client) FetchWeek(ctx context.Context, date time.Time) ([]Event, error)
 	// Attempt standard fast HTTP request first
 	body, err := c.executeRequest(ctx, targetURL)
 	if err != nil {
-		// Fallback to loading via headless Chromium-based browser to completely bypass Cloudflare restrictions
-		fmt.Fprintf(os.Stderr, "\n[Cloudflare Bypass] Fast HTTP blocked for week %s. Running headless browser session...\n", weekParam)
-		body, err = c.FetchWeekViaBrowser(ctx, targetURL)
-		if err != nil {
-			return nil, fmt.Errorf("both HTTP crawler and headless browser extraction failed: %w", err)
+		// Serialize browser fallbacks to prevent concurrent Chromium storms
+		c.browserMu.Lock()
+
+		// Double check: retry standard HTTP in case another worker resolved the challenge
+		body, err = c.executeRequest(ctx, targetURL)
+		if err == nil {
+			c.browserMu.Unlock()
+		} else {
+			// Fallback to loading via headless Chromium-based browser to completely bypass Cloudflare restrictions
+			fmt.Fprintf(os.Stderr, "\n[Cloudflare Bypass] Fast HTTP blocked for week %s. Running headless browser session...\n", weekParam)
+			body, err = c.FetchWeekViaBrowser(ctx, targetURL)
+			c.browserMu.Unlock()
+			if err != nil {
+				return nil, fmt.Errorf("both HTTP crawler and headless browser extraction failed: %w", err)
+			}
 		}
 	}
 
-	parsedYear := sunday.Year()
-	events, err := ParseHTML(strings.NewReader(string(body)), parsedYear, c.timeLoc)
+	events, err := ParseHTMLWithSunday(strings.NewReader(string(body)), sunday, c.timeLoc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML for week %s: %w", weekParam, err)
+	}
+
+	// Filter events by impact level if filter is configured
+	if len(c.impactFilter) > 0 {
+		filtered := make([]Event, 0, len(events))
+		for _, e := range events {
+			if c.impactFilter[e.Impact] {
+				filtered = append(filtered, e)
+			}
+		}
+		events = filtered
 	}
 
 	return events, nil
@@ -353,6 +390,17 @@ func (c *Client) FetchLiveFeed(ctx context.Context) ([]Event, error) {
 	events, err := ParseXML(body, c.timeLoc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse XML live feed: %w", err)
+	}
+
+	// Filter events by impact level if filter is configured
+	if len(c.impactFilter) > 0 {
+		filtered := make([]Event, 0, len(events))
+		for _, e := range events {
+			if c.impactFilter[e.Impact] {
+				filtered = append(filtered, e)
+			}
+		}
+		events = filtered
 	}
 
 	return events, nil

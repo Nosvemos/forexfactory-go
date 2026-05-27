@@ -35,6 +35,11 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to enable SQLite WAL mode: %w", err)
 	}
 
+	// Set busy_timeout to prevent lockups during concurrent writes
+	if _, err := s.db.ExecContext(ctx, "PRAGMA busy_timeout=5000;"); err != nil {
+		return fmt.Errorf("failed to set SQLite busy timeout: %w", err)
+	}
+
 	schema := `
 	CREATE TABLE IF NOT EXISTS events (
 		id TEXT PRIMARY KEY,

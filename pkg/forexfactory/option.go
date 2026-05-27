@@ -85,3 +85,16 @@ func WithProgressCallback(callback func(current, total int)) Option {
 	}
 }
 
+// WithImpacts returns an Option that configures the Client to only parse and return
+// events matching the specified impact levels (e.g. ImpactHigh, ImpactMedium).
+func WithImpacts(impacts ...Impact) Option {
+	return func(c *Client) {
+		if len(impacts) > 0 {
+			c.impactFilter = make(map[Impact]bool)
+			for _, imp := range impacts {
+				c.impactFilter[imp] = true
+			}
+		}
+	}
+}
+

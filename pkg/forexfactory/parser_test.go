@@ -153,3 +153,71 @@ func TestParseHTML(t *testing.T) {
 		t.Errorf("Expected Date %v to be inherited from row 1, got %v", expectedTime, e2.Date)
 	}
 }
+
+func TestParseHTMLYearStraddling(t *testing.T) {
+	mockHTML := `<html>
+<body>
+	<table class="calendar__table">
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">Wed Dec 31</td>
+			<td class="calendar__cell calendar__time">10:00pm</td>
+			<td class="calendar__cell calendar__currency">USD</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-red">High</span></td>
+			<td class="calendar__cell calendar__event"><a href="calendar.php?show=1">New Year Eve Event</a></td>
+			<td class="calendar__cell calendar__actual">1</td>
+			<td class="calendar__cell calendar__forecast">2</td>
+			<td class="calendar__cell calendar__previous">3</td>
+		</tr>
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">Thu Jan 1</td>
+			<td class="calendar__cell calendar__time">8:30am</td>
+			<td class="calendar__cell calendar__currency">EUR</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-orange">Medium</span></td>
+			<td class="calendar__cell calendar__event"><a href="calendar.php?show=2">New Year Event</a></td>
+			<td class="calendar__cell calendar__actual">4</td>
+			<td class="calendar__cell calendar__forecast">5</td>
+			<td class="calendar__cell calendar__previous">6</td>
+		</tr>
+	</table>
+</body>
+</html>`
+
+	// 1. Test ParseHTMLWithSunday (Exact Mapping)
+	sunday := time.Date(2025, time.December, 28, 0, 0, 0, 0, time.UTC)
+	r1 := bytes.NewReader([]byte(mockHTML))
+	events1, err := ParseHTMLWithSunday(r1, sunday, time.UTC)
+	if err != nil {
+		t.Fatalf("ParseHTMLWithSunday failed: %v", err)
+	}
+
+	if len(events1) != 2 {
+		t.Fatalf("Expected 2 events, got %d", len(events1))
+	}
+
+	if events1[0].Date.Year() != 2025 || events1[0].Date.Month() != time.December || events1[0].Date.Day() != 31 {
+		t.Errorf("Expected Dec 31 2025, got %v", events1[0].Date)
+	}
+
+	if events1[1].Date.Year() != 2026 || events1[1].Date.Month() != time.January || events1[1].Date.Day() != 1 {
+		t.Errorf("Expected Jan 1 2026, got %v", events1[1].Date)
+	}
+
+	// 2. Test legacy ParseHTML (Transition Heuristic)
+	r2 := bytes.NewReader([]byte(mockHTML))
+	events2, err := ParseHTML(r2, 2025, time.UTC)
+	if err != nil {
+		t.Fatalf("ParseHTML failed: %v", err)
+	}
+
+	if len(events2) != 2 {
+		t.Fatalf("Expected 2 events, got %d", len(events2))
+	}
+
+	if events2[0].Date.Year() != 2025 {
+		t.Errorf("Expected legacy Dec 31 to be in 2025, got year %d", events2[0].Date.Year())
+	}
+
+	if events2[1].Date.Year() != 2026 {
+		t.Errorf("Expected legacy Jan 1 to transition to 2026, got year %d", events2[1].Date.Year())
+	}
+}

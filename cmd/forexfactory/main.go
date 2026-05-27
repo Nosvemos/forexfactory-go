@@ -34,6 +34,9 @@ var (
 
 	// Flags for dbload command
 	dbFlag string
+
+	// Global silent flag
+	silentFlag bool
 )
 
 var rootCmd = &cobra.Command{
@@ -83,6 +86,7 @@ func init() {
 	downloadCmd.Flags().IntVarP(&concurrencyFlag, "concurrency", "c", 3, "Number of concurrent downloading worker threads")
 	downloadCmd.Flags().StringVar(&cookieFlag, "cookie", "", "Cloudflare clearance cookie (cf_clearance=...) to bypass anti-bot blocks")
 
+	downloadCmd.Flags().BoolVarP(&silentFlag, "silent", "q", false, "Mute all logging and progress outputs")
 	_ = downloadCmd.MarkFlagRequired("start")
 	_ = downloadCmd.MarkFlagRequired("end")
 
@@ -94,6 +98,7 @@ func init() {
 	dbloadCmd.Flags().IntVarP(&concurrencyFlag, "concurrency", "c", 3, "Number of concurrent downloading worker threads")
 	dbloadCmd.Flags().StringVar(&cookieFlag, "cookie", "", "Cloudflare clearance cookie (cf_clearance=...) to bypass anti-bot blocks")
 	dbloadCmd.Flags().StringVarP(&dbFlag, "db", "d", "forexfactory.db", "SQLite database file path")
+	dbloadCmd.Flags().BoolVarP(&silentFlag, "silent", "q", false, "Mute all logging and progress outputs")
 
 	_ = dbloadCmd.MarkFlagRequired("start")
 	_ = dbloadCmd.MarkFlagRequired("end")
@@ -126,25 +131,31 @@ func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Locat
 		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cookieFlag))
 	}
 
-	// Dynamic visual progress callback
-	fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", concurrencyFlag)
-	clientOpts = append(clientOpts, forexfactory.WithProgressCallback(func(current, total int) {
-		pct := current * 100 / total
-		barLen := 30
-		filledLen := current * barLen / total
-		bar := strings.Repeat("█", filledLen) + strings.Repeat("░", barLen-filledLen)
-		fmt.Fprintf(os.Stderr, "\r[%s] %d%% Completed (%d/%d weeks)", bar, pct, current, total)
-	}))
+	if !silentFlag {
+		// Dynamic visual progress callback
+		fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", concurrencyFlag)
+		clientOpts = append(clientOpts, forexfactory.WithProgressCallback(func(current, total int) {
+			pct := current * 100 / total
+			barLen := 30
+			filledLen := current * barLen / total
+			bar := strings.Repeat("█", filledLen) + strings.Repeat("░", barLen-filledLen)
+			fmt.Fprintf(os.Stderr, "\r[%s] %d%% Completed (%d/%d weeks)", bar, pct, current, total)
+		}))
+	}
 
 	client := forexfactory.NewClient(clientOpts...)
 
 	events, err := client.FetchRange(context.Background(), startDate, endDate)
 	if err != nil {
-		fmt.Fprintln(os.Stderr) // Move cursor past progress bar
+		if !silentFlag {
+			fmt.Fprintln(os.Stderr) // Move cursor past progress bar
+		}
 		log.Fatalf("\nError downloading events: %v", err)
 	}
 
-	fmt.Fprintln(os.Stderr, "\nProcessing, filtering and sorting events...")
+	if !silentFlag {
+		fmt.Fprintln(os.Stderr, "\nProcessing, filtering and sorting events...")
+	}
 	return events
 }
 
@@ -198,7 +209,9 @@ func executeDownload() {
 		log.Fatalf("Unknown output format %q: use 'json' or 'csv'", formatFlag)
 	}
 
-	fmt.Fprintf(os.Stderr, "Successfully exported %d events.\n", len(filteredEvents))
+	if !silentFlag {
+		fmt.Fprintf(os.Stderr, "Successfully exported %d events.\n", len(filteredEvents))
+	}
 }
 
 func executeDbLoad() {
@@ -241,7 +254,9 @@ func executeDbLoad() {
 		log.Fatalf("Failed to load events into database: %v", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Successfully imported %d events into SQLite database %q via storage SDK.\n", len(filteredEvents), dbFlag)
+	if !silentFlag {
+		fmt.Fprintf(os.Stderr, "Successfully imported %d events into SQLite database %q via storage SDK.\n", len(filteredEvents), dbFlag)
+	}
 }
 
 func executeLive() {
@@ -283,14 +298,19 @@ func fetchAndPrintLive(client *forexfactory.Client) {
 		return
 	}
 
-	fmt.Println(strings.Repeat("=", 80))
 	tzName := "UTC"
 	if len(events) > 0 {
 		_, offset := events[0].Date.Zone()
-		tzName = fmt.Sprintf("Offset UTC%d", offset/3600)
+		tzName = fmt.Sprintf("Offset UTC%+d", offset/3600)
 	}
-	fmt.Printf("FOREX FACTORY LIVE WEEKLY ECONOMIC CALENDAR (%s)\n", tzName)
-	fmt.Println(strings.Repeat("=", 80))
+
+	fmt.Println()
+	fmt.Printf("\033[1;36m┌%s┐\033[0m\n", strings.Repeat("─", 88))
+	headerText := fmt.Sprintf(" FOREX FACTORY LIVE WEEKLY ECONOMIC CALENDAR (%s) ", tzName)
+	padding := (88 - len(headerText)) / 2
+	if padding < 0 { padding = 0 }
+	fmt.Printf("\033[1;36m│\033[0m%s\033[1;35m%s\033[0m%s\033[1;36m│\033[0m\n", strings.Repeat(" ", padding), headerText, strings.Repeat(" ", 88-len(headerText)-padding))
+	fmt.Printf("\033[1;36m├%s┤\033[0m\n", strings.Repeat("─", 88))
 
 	for _, e := range events {
 		timeStr := e.Date.Format("2006-01-02 15:04")
@@ -300,12 +320,40 @@ func fetchAndPrintLive(client *forexfactory.Client) {
 			timeStr = e.Date.Format("2006-01-02") + " (Tentative)"
 		}
 
-		fmt.Printf("[%s] %-3s | %-6s | %s\n", timeStr, e.Country, e.Impact, e.Title)
+		var impactStr string
+		switch e.Impact {
+		case forexfactory.ImpactHigh:
+			impactStr = "\033[1;31m🔴 HIGH\033[0m  "
+		case forexfactory.ImpactMedium:
+			impactStr = "\033[1;33m🟡 MEDIUM\033[0m"
+		case forexfactory.ImpactLow:
+			impactStr = "\033[1;32m🟢 LOW\033[0m   "
+		default:
+			impactStr = "\033[1;90m⚪ NONE\033[0m  "
+		}
+
+		titleText := e.Title
+		if len(titleText) > 42 {
+			titleText = titleText[:39] + "..."
+		}
+		
+		fmt.Printf("\033[1;36m│\033[0m [\033[1;37m%-16s\033[0m] \033[1;34m%-3s\033[0m │ %s │ \033[1m%-42s\033[0m \033[1;36m│\033[0m\n", 
+			timeStr, e.Country, impactStr, titleText)
+
 		if e.Actual != "" || e.Forecast != "" || e.Previous != "" {
-			fmt.Printf("      └─ Actual: %-8s | Forecast: %-8s | Previous: %s\n", e.Actual, e.Forecast, e.Previous)
+			act := e.Actual
+			if act == "" { act = "-" }
+			forc := e.Forecast
+			if forc == "" { forc = "-" }
+			prev := e.Previous
+			if prev == "" { prev = "-" }
+
+			fmt.Printf("\033[1;36m│\033[0m      \033[90m└─ Actual:\033[0m \033[1;32m%-10s\033[0m \033[90mForecast:\033[0m \033[1;33m%-10s\033[0m \033[90mPrevious:\033[0m \033[1;37m%-10s\033[0m \033[1;36m│\033[0m\n", 
+				act, forc, prev)
 		}
 	}
-	fmt.Println(strings.Repeat("=", 80))
+	fmt.Printf("\033[1;36m└%s┘\033[0m\n", strings.Repeat("─", 88))
+	fmt.Println()
 }
 
 func writeCSV(w io.Writer, events []forexfactory.Event) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,8 +78,8 @@ func TestExecuteRequestHeaders(t *testing.T) {
 		if r.Header.Get("User-Agent") != "CustomUA/2.0" {
 			t.Errorf("Expected User-Agent 'CustomUA/2.0', got '%s'", r.Header.Get("User-Agent"))
 		}
-		if r.Header.Get("Cookie") != "test-cookie-val" {
-			t.Errorf("Expected Cookie 'test-cookie-val', got '%s'", r.Header.Get("Cookie"))
+		if !strings.Contains(r.Header.Get("Cookie"), "test-cookie-val") {
+			t.Errorf("Expected Cookie to contain 'test-cookie-val', got '%s'", r.Header.Get("Cookie"))
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("mock response"))
@@ -112,4 +113,37 @@ func TestClientFetchRangeValidation(t *testing.T) {
 	}
 
 	// 2. Verify that progress callback is called if configured (we can test with an empty range or similar if allowed)
+}
+
+func TestClientImpactsOptionAndFiltering(t *testing.T) {
+	client := NewClient(
+		WithImpacts(ImpactHigh, ImpactMedium),
+	)
+
+	if !client.impactFilter[ImpactHigh] {
+		t.Errorf("Expected impact filter to have ImpactHigh")
+	}
+	if !client.impactFilter[ImpactMedium] {
+		t.Errorf("Expected impact filter to have ImpactMedium")
+	}
+	if client.impactFilter[ImpactLow] {
+		t.Errorf("Expected impact filter not to have ImpactLow")
+	}
+
+	// Verify events are filtered correctly
+	testEvents := []Event{
+		{Title: "High Event", Impact: ImpactHigh},
+		{Title: "Low Event", Impact: ImpactLow},
+	}
+
+	events := []Event{}
+	for _, e := range testEvents {
+		if client.impactFilter[e.Impact] {
+			events = append(events, e)
+		}
+	}
+
+	if len(events) != 1 || events[0].Title != "High Event" {
+		t.Errorf("Expected only High Event to be kept, got %d items", len(events))
+	}
 }
