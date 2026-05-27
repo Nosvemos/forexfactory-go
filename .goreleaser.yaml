@@ -7,9 +7,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: forexfactory
-    main: ./cmd/forexfactory/main.go
-    binary: forexfactory
+  - id: forexfactory-go
+    main: ./cmd/forexfactory-go/main.go
+    binary: forexfactory-go
     env:
       - CGO_ENABLED=0
     goos:

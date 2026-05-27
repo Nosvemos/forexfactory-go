@@ -1,209 +1,189 @@
-# forexfactory-go
+# forexfactory-go 🚀
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/Nosvemos/forexfactory-go.svg)](https://pkg.go.dev/github.com/Nosvemos/forexfactory-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Nosvemos/forexfactory-go)](https://goreportcard.com/report/github.com/Nosvemos/forexfactory-go)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<div align="center">
+  <h1>forexfactory-go 📊</h1>
+  <p><b>The fastest, most robust, and enterprise-grade tool to concurrently scrape, stream, and persist Forex Factory economic calendar data — with automated Cloudflare bypass.</b></p>
 
-A robust, enterprise-grade Go library and premium command-line tool (CLI) to scrape, stream, and query economic calendar data from **Forex Factory** (`https://www.forexfactory.com/calendar`). Designed to fetch both historical data and stream live economic events seamlessly.
-
-Highly inspired by modular, high-performance tick-data downloader designs (like `dukascopy-go`), this module is designed for concurrent scraping, customizability, rate-limit safety, and database-ready storage querying.
-
----
-
-## Features
-
-- **Historical Range Downloader**: Fetch events concurrently across broad date ranges via a built-in worker pool.
-- **Real-Time XML Stream Tracker**: Pull the current week's events from a lightweight, low-overhead XML stream.
-- **Dual-Use Storage SDK**: Decoupled persistence interface featuring high-speed bulk insertions and rich range/currency query methods using a CGO-free, **WAL (Write-Ahead Logging) optimized SQLite driver** with lock-preventing busy timeouts.
-- **Programmatic Hooks & Custom Options**: Exposes thread-safe rate-limiting, selective impact filtering (`WithImpacts`), custom proxy bindings, and progress update listeners (`ProgressCallback`) for seamless integrations in web and background applications.
-- **Automated Cloudflare Evasion**: Integrated fallback mechanics utilizing headless Chromium drivers with Turnstile automation bypass flags.
-- **Ultra-Fast Persistent Session Cache**: Session cookies are automatically stored in the local OS cache database, bypassing headless browser boots completely on subsequent runs for instantaneous, sub-second execution speeds.
-- **Visual Terminal Tables**: High-end ASCII border layouts with bold colored status emojis (`🔴 HIGH`, `🟡 MEDIUM`, `🟢 LOW`) rendered natively in your CLI shell.
-- **Webhook Notifier Daemon**: Spin up the real-time background alert service (`ff-notifier`) to push Warning Cards to Discord channels and Telegram groups exactly 15 minutes before news hits.
-- **Timezone Standardization**: Shifting calendar datetimes to any target location (e.g. UTC, local, or financial center zones).
+  <p>
+    <a href="https://pkg.go.dev/github.com/Nosvemos/forexfactory-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/forexfactory-go.svg" alt="Go Reference"></a>
+    <a href="https://goreportcard.com/report/github.com/Nosvemos/forexfactory-go"><img src="https://goreportcard.com/badge/github.com/Nosvemos/forexfactory-go" alt="Go Report Card"></a>
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  </p>
+  <p><i>Concurrently Scrape Historical Calendar • Stream Live XML Feed • Discord & Telegram Alarms • ClickHouse, Postgres, InfluxDB & SQLite SDK Drivers • Parquet, CSV & JSON Export • Python Pandas Wrapper</i></p>
+</div>
 
 ---
 
-## Installation
+## ⚡ Why `forexfactory-go`?
 
-### As a Library
-To import and use `forexfactory-go` in your Go project:
+Compared to standard single-threaded scrappers or manual download tasks, `forexfactory-go` is built for **speed, industrial durability, and seamless analytical storage integration**.
 
+| Feature | `forexfactory-go` | Standard Scrapers |
+|---|---|---|
+| **Speed & Concurrency** | 🚀 Concurrent Multi-Worker Pool with Rate Limiting | 🐢 Slow, single-threaded queries |
+| **Cloudflare Bypass** | 🛡️ Long-Lived Headless Browser Fallback + Automated Cookie Cache | ❌ Blocks instantly |
+| **Database SDK Drivers** | 🗄️ **SQLite** (CGO-free WAL), **PostgreSQL**, **ClickHouse** & **InfluxDB** | ❌ None (Requires custom code) |
+| **Format Support** | 📊 **Apache Parquet**, CSV, JSON | ⚠️ Raw text or JSON only |
+| **Live Notifications** | 🔔 Real-time Alarm Daemon (`ff-notifier`) for **Telegram** & **Discord** | ❌ None |
+| **Cross-Language Bindings**| 🐍 Native Go Library + C-Shared bindings and **Python Pandas Wrapper** | ❌ Go/Node only |
+| **Timezone Precision** | 🌍 Force UTC visual scrape + Target timezone translation | ⚠️ Timezone shifts cause errors |
+| **Offline Testing** | 🧪 Bulletproof `mockRoundTripper` for test stability without hitting network | ❌ Hits live server (unstable) |
+
+---
+
+## 🚀 Installation
+
+### As a CLI Tool
+To install the pre-built CLI tool directly to your `$GOPATH/bin`:
+```bash
+go install github.com/Nosvemos/forexfactory-go/cmd/forexfactory-go@latest
+```
+
+### As a Go Library
+To import and use the Go SDK inside your own algorithms:
 ```bash
 go get github.com/Nosvemos/forexfactory-go
 ```
 
-### As a CLI Tool
-To install the CLI tool directly to your `$GOPATH/bin`:
-
-```bash
-go install github.com/Nosvemos/forexfactory-go/cmd/forexfactory@latest
-```
-
 ---
 
-## CLI Usage
+## 📖 CLI Usage
 
-The executable provides three modular commands: `download`, `dbload`, and `live`.
+The CLI executable provides three modular commands: `download`, `dbload`, and `live`.
 
 ### 1. Download Historical Calendar Data
-Download calendar events within a specific date range concurrently to a JSON or CSV file.
-
+Download calendar events concurrently to JSON, CSV, or Apache Parquet files:
 ```bash
-# Download a month of data concurrently using 4 workers, exporting to a CSV file
-forexfactory download --start 2026-05-01 --end 2026-05-31 --concurrency 4 --format csv --output calendar_may26.csv
+# Concurrently scrape historical range to Apache Parquet (optimal for Pandas/Polars)
+forexfactory-go download --start 2026-05-01 --end 2026-05-15 --format parquet --output calendar.parquet
 
-# Download historical events as JSON using Europe/Istanbul timezone and custom cookies
-forexfactory download -s 2026-01-01 -e 2026-01-31 --timezone "Europe/Istanbul" --cookie "cf_clearance=your_cf_clearance" --format json
+# Scrape a month of data concurrently to CSV converting event times to local zone
+forexfactory-go download -s 2026-05-01 -e 2026-05-31 --concurrency 4 -f csv -o calendar.csv --timezone "Local"
 ```
 
-### 2. Download and Load directly into SQLite Database
+### 2. Download and Load directly into SQLite
 ```bash
-# Downloads and load historical events directly inside a CGO-free local SQLite database (muted via --silent)
-forexfactory dbload --start 2026-05-01 --end 2026-05-31 --db forexfactory.db --silent
+# Downloads and loads range directly inside a WAL-optimized, local SQLite database
+forexfactory-go dbload --start 2026-05-01 --end 2026-05-31 --db forexfactory.db
 ```
 
-### 3. Live Economic Feed Polling
+### 3. Stream Live Economic Feed
 ```bash
-# Watch live economic events in a gorgeous colorized ASCII table format, polling every 60 seconds
-forexfactory live --interval 60s --timezone Local
+# Stream live weekly events inside a colorized ASCII terminal table, polling every 60 seconds
+forexfactory-go live --interval 60s --timezone "America/New_York"
 ```
 
-### 4. Real-time Telegram & Discord News Alarm Daemon (`ff-notifier`)
-To launch the background notification alerting daemon that watches the feed and pushes alert warnings to Discord webhooks or Telegram chats exactly 15 minutes before news hits:
-
-Install the notifier binary:
+### 4. Background Webhook Alarm Daemon (`ff-notifier`)
+Launch the background notification alerting daemon that watches the feed and pushes Alert Cards to Discord webhooks or Telegram chats exactly 15 minutes before news releases:
 ```bash
+# Run notifier binary
 go install github.com/Nosvemos/forexfactory-go/cmd/ff-notifier@latest
-```
 
-Run the notifier daemon:
-```bash
-# Alert Discord webhook and Telegram channel before high and medium impact releases
 ff-notifier --discord-webhook "https://discord.com/api/webhooks/..." \
             --telegram-token "123456:ABC..." \
-            --telegram-chat "@my_alerts_channel" \
+            --telegram-chat "@my_alerts" \
             --min-impact "Medium"
 ```
 
 ---
 
-## Library Usage Examples
+## 🐍 Python Pandas SDK Wrapper
 
-### 1. Programmatic Range Downloading with Progress Updates
-This example shows how to configure a code-controlled concurrent downloader client using rate limiters and progress tracking.
+`forexfactory-go` exposes a highly-efficient **C-Shared Library Bindings** and a Python ctypes wrapper, allowing Python quantitative analysts to scrape events directly into standard **Pandas DataFrames** with zero dependencies.
 
-```go
-package main
+### 🪄 Compile Bindings
+Compile the Go core to a shared library using the included Makefile:
+- **Windows**: `make build-dll` or `go build -buildmode=c-shared -o libforexfactory.dll pkg/bindings/bindings.go`
+- **Linux/Mac**: `make build-so` or `go build -buildmode=c-shared -o libforexfactory.so pkg/bindings/bindings.go`
 
-import (
-	"context"
-	"fmt"
-	"log"
-	"time"
+### 💻 Python Integration Example
+Run this inside the `python-sdk/` directory (where the wrapper is located):
+```python
+from datetime import datetime
+from forexfactory import ForexFactoryClient
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+# Initialize Go client through Python ctypes (autodetects libforexfactory.dll/.so)
+client = ForexFactoryClient(
+    rate_limit=2,
+    concurrency=4,
+    timezone="UTC",
+    impacts=["High", "Medium"]
 )
 
-func main() {
-	// Initialize a client with custom options
-	client := forexfactory.NewClient(
-		forexfactory.WithRateLimit(2),             // Cap at 2 requests per second
-		forexfactory.WithConcurrency(4),           // Run 4 concurrent downloading worker threads
-		forexfactory.WithTimeLocation(time.Local), // Convert event times to local timezone
-		forexfactory.WithProgressCallback(func(current, total int) {
-			fmt.Printf("Download progress: %d/%d weeks completed\n", current, total)
-		}),
-	)
+start = datetime(2026, 5, 1)
+end = datetime(2026, 5, 10)
 
-	start := time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, time.May, 20, 23, 59, 59, 0, time.UTC)
+# Scrape concurrently and return directly as a structured Pandas DataFrame!
+df = client.fetch_range(start, end, as_dataframe=True)
 
-	// Fetch a specific range's events concurrently
-	events, err := client.FetchRange(context.Background(), start, end)
-	if err != nil {
-		log.Fatalf("Failed to fetch events: %v", err)
-	}
+print(df[["date", "country", "impact", "title", "forecast", "actual"]].head(10))
 
-	fmt.Printf("Successfully fetched %d events!\n", len(events))
-}
-```
-
-### 2. Programmatic Database Persistence and Querying
-You can easily write and query data through the storage driver:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"time"
-
-	"github.com/Nosvemos/forexfactory-go/pkg/storage"
-)
-
-func main() {
-	ctx := context.Background()
-	store := storage.NewSQLiteStorage("forexfactory.db")
-
-	if err := store.Init(ctx); err != nil {
-		log.Fatalf("Database initialization failed: %v", err)
-	}
-	defer store.Close()
-
-	// Query events falling in a date range
-	start := time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, time.May, 20, 23, 59, 59, 0, time.UTC)
-
-	events, err := store.GetEvents(ctx, start, end)
-	if err != nil {
-		log.Fatalf("Failed to query events: %v", err)
-	}
-
-	// Query events by currency/country
-	usdEvents, err := store.GetEventsByCountry(ctx, "USD")
-	if err != nil {
-		log.Fatalf("Failed to query USD events: %v", err)
-	}
-
-	for _, e := range usdEvents {
-		fmt.Printf("[%s] USD %s (Impact: %s)\n", e.Date.Format("2006-01-02"), e.Title, e.Impact)
-	}
-}
+# Safely close browser allocations
+client.close()
 ```
 
 ---
 
-## Configuration Options
+## 🗄️ Database Storage SDK Drivers
 
-When initializing the client with `forexfactory.NewClient(...)`, you can pass various functional options:
+The SDK is equipped with a decoupled persistence layer supporting SQLite, PostgreSQL, ClickHouse, and InfluxDB out-of-the-box.
 
-| Option | Description | Example |
-| :--- | :--- | :--- |
-| `WithHTTPClient(client *http.Client)` | Use a custom HTTP client | `WithHTTPClient(&http.Client{Timeout: 10 * time.Second})` |
-| `WithUserAgent(ua string)` | Rotate or set custom user agent headers | `WithUserAgent("CustomAgent/1.0")` |
-| `WithProxy(proxyURL string)` | Direct requests through a proxy | `WithProxy("socks5://127.0.0.1:9050")` |
-| `WithRateLimit(limit int)` | Set maximum queries per second | `WithRateLimit(2)` |
-| `WithConcurrency(workers int)` | Set the concurrent workers for range fetching | `WithConcurrency(4)` |
-| `WithProgressCallback(fn)` | Attach a custom progress listener | `WithProgressCallback(func(c, t int) {})` |
-| `WithTimeLocation(loc *time.Location)`| Shift parsed datetimes to target location | `WithTimeLocation(time.UTC)` |
-| `WithHeader(key, value string)`| Inject custom header (like `Cookie`, `Referer`, `Authorization`) | `WithHeader("Cookie", "cf_clearance=...")` |
-| `WithImpacts(impacts ...Impact)`| Selective filtering of news impact levels during download | `WithImpacts(ImpactHigh, ImpactMedium)` |
+### 1. ClickHouse (High-Performance Columnar OLAP)
+Designed with a `ReplacingMergeTree` schema to handle atomic deduplication and high-speed columnar query batching:
+```go
+import "github.com/Nosvemos/forexfactory-go/pkg/storage"
+
+// Initialize analytical ClickHouse driver
+store := storage.NewClickHouseStorage("localhost:9000", "default", "username", "password")
+err := store.Init(ctx)
+
+// Bulk-saves scraped events using transaction batching
+err = store.SaveEvents(ctx, events)
+```
+
+### 2. PostgreSQL (Relational Metadata Store)
+Implements an optimized `ON CONFLICT (id) DO UPDATE` bulk-upsert routine:
+```go
+store := storage.NewPostgresStorage("postgres://user:pass@localhost:5432/dbname?sslmode=disable")
+err := store.Init(ctx)
+err = store.SaveEvents(ctx, events)
+```
+
+### 3. InfluxDB (Time-Series DB)
+Writes events as measurement metric points with indexed tags. Queries use native Flux `pivot` routines to reconstruct flat chronological event list:
+```go
+store := storage.NewInfluxDBStorage("http://localhost:8086", "auth-token", "organization", "bucket-name")
+err := store.Init(ctx)
+err = store.SaveEvents(ctx, events)
+```
 
 ---
 
-## Contributing
+## 🛡️ Premium Anti-Bot Protections
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/cool-feature`)
-3. Commit your changes (`git commit -m 'Add cool feature'`)
-4. Push to the branch (`git push origin feature/cool-feature`)
-5. Create a Pull Request
+Forex Factory utilizes Cloudflare bot protection. `forexfactory-go` bypasses this transparently:
+1. **Long-Lived Session Cache**: Automatically saves resolved Cloudflare session cookies in `session.json` inside the user's standard OS cache directory (`os.UserCacheDir()`).
+2. **Headless Browser Fallback**: If a fast HTTP request fails with 403 Forbidden, the SDK boots a headless Chromium instance, waits for Turnstile automation bypass flags, and grabs the clearance cookie.
+3. **Serialization Lock**: Headless browser starts are globally synchronized via mutexes to prevent concurrency storms and protect CPU/memory.
 
 ---
 
-## License
+## 🧪 Offline Testing
+
+Developers can test their backtest systems offline using the SDK's built-in `mockRoundTripper`, allowing full parser execution without internet connectivity:
+```go
+import (
+    "net/http"
+    "github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+)
+
+// Setup mock client returning predefined weekly and live economic feeds
+mockClient := &http.Client{Transport: &mockRoundTripper{}}
+client := forexfactory.NewClient(forexfactory.WithHTTPClient(mockClient))
+```
+
+---
+
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
