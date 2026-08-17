@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -145,5 +146,107 @@ func TestClientImpactsOptionAndFiltering(t *testing.T) {
 
 	if len(events) != 1 || events[0].Title != "High Event" {
 		t.Errorf("Expected only High Event to be kept, got %d items", len(events))
+	}
+}
+
+func TestClientConcurrentRateLimiter(t *testing.T) {
+	// Verifies that waitRateLimit doesn't hold locks during sleep and allows concurrent calls
+	client := NewClient(WithRateLimit(20)) // 50ms interval
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			client.waitRateLimit()
+		}()
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	// 5 requests with 20 QPS (50ms interval) should span at least ~200ms
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("Concurrent rate limiter finished too fast: %v", elapsed)
+	}
+}
+
+func TestApplyHeadersSingleCookie(t *testing.T) {
+	client := NewClient(
+		WithHeader("Cookie", "session=abc123xyz"),
+	)
+
+	req, _ := http.NewRequest("GET", "https://example.com", nil)
+	client.applyHeaders(req)
+
+	// Should only have 1 Cookie header entry
+	cookieHeaders := req.Header.Values("Cookie")
+	if len(cookieHeaders) != 1 {
+		t.Errorf("Expected exactly 1 Cookie header entry, got %d: %v", len(cookieHeaders), cookieHeaders)
+	}
+
+	cookieVal := req.Header.Get("Cookie")
+	if !strings.Contains(cookieVal, "session=abc123xyz") || !strings.Contains(cookieVal, "fftimezoneoffset=0") {
+		t.Errorf("Expected cookie to contain both session and fftimezoneoffset, got %q", cookieVal)
+	}
+}
+
+func TestClientProxyPoolAndUserAgentPool(t *testing.T) {
+	proxies := []string{"http://127.0.0.1:8001", "http://127.0.0.1:8002"}
+	userAgents := []string{"UA-1", "UA-2", "UA-3"}
+
+	client := NewClient(
+		WithProxyPool(proxies),
+		WithUserAgentPool(userAgents),
+		WithMaxRetries(2),
+	)
+
+	if len(client.proxyPool) != 2 {
+		t.Errorf("Expected 2 proxies in pool, got %d", len(client.proxyPool))
+	}
+	if len(client.userAgentPool) != 3 {
+		t.Errorf("Expected 3 user agents in pool, got %d", len(client.userAgentPool))
+	}
+
+	// Verify UA rotation
+	ua1 := client.getEffectiveUserAgent()
+	ua2 := client.getEffectiveUserAgent()
+	ua3 := client.getEffectiveUserAgent()
+	ua4 := client.getEffectiveUserAgent()
+
+	if ua1 != "UA-1" || ua2 != "UA-2" || ua3 != "UA-3" || ua4 != "UA-1" {
+		t.Errorf("UA rotation sequence failed: %s, %s, %s, %s", ua1, ua2, ua3, ua4)
+	}
+}
+
+func TestExecuteRequestExponentialBackoffOn500(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("recovered on attempt 3"))
+	}))
+	defer server.Close()
+
+	client := NewClient(
+		WithMaxRetries(3),
+		WithRateLimit(50), // fast
+	)
+
+	body, err := client.executeRequest(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("executeRequest with backoff failed: %v", err)
+	}
+
+	if string(body) != "recovered on attempt 3" {
+		t.Errorf("Expected body 'recovered on attempt 3', got %q", string(body))
+	}
+
+	if attempts != 3 {
+		t.Errorf("Expected exactly 3 attempts, got %d", attempts)
 	}
 }

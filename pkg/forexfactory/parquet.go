@@ -2,6 +2,8 @@ package forexfactory
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/xitongsys/parquet-go-source/local"
@@ -26,6 +28,10 @@ type ParquetEvent struct {
 
 // WriteParquet saves events to a highly-compressed, Snappy-encoded Apache Parquet file at the specified file path.
 func WriteParquet(filePath string, events []Event) error {
+	if dir := filepath.Dir(filePath); dir != "" && dir != "." {
+		_ = os.MkdirAll(dir, 0755)
+	}
+
 	fw, err := local.NewLocalFileWriter(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create local file writer for path %q: %w", filePath, err)

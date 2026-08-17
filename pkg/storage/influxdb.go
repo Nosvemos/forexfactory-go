@@ -57,6 +57,9 @@ func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []forexfactory.
 	if i.client == nil {
 		return fmt.Errorf("influxdb client not initialized, call Init() first")
 	}
+	if len(events) == 0 {
+		return nil
+	}
 
 	for _, e := range events {
 		eventID := e.ID
@@ -113,6 +116,8 @@ func (i *InfluxDBStorage) GetEvents(ctx context.Context, start, end time.Time) (
 
 // GetEventsByCurrency retrieves events matching a specific currency code.
 func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexfactory.Event, error) {
+	cleanCurrency := strings.ToUpper(strings.TrimSpace(strings.ReplaceAll(currency, `"`, "")))
+
 	// Query historical data (last 5 years to ensure full historical coverage of currency events)
 	fluxQuery := fmt.Sprintf(`
 		from(bucket: "%s")
@@ -120,7 +125,7 @@ func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency stri
 			|> filter(fn: (r) => r["_measurement"] == "economic_events" and r["currency"] == "%s")
 			|> pivot(rowKey:["_time", "currency", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
 			|> sort(columns: ["_time"])
-	`, i.bucket, strings.ToUpper(strings.TrimSpace(currency)))
+	`, i.bucket, cleanCurrency)
 
 	return i.executeFluxQuery(ctx, fluxQuery)
 }
@@ -143,7 +148,8 @@ func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 	if len(filter.Currencies) > 0 {
 		var sub []string
 		for _, c := range filter.Currencies {
-			sub = append(sub, fmt.Sprintf(`r["currency"] == "%s"`, strings.ToUpper(strings.TrimSpace(c))))
+			cleanC := strings.ToUpper(strings.TrimSpace(strings.ReplaceAll(c, `"`, "")))
+			sub = append(sub, fmt.Sprintf(`r["currency"] == "%s"`, cleanC))
 		}
 		filterConditions = append(filterConditions, fmt.Sprintf("(%s)", strings.Join(sub, " or ")))
 	}
@@ -151,7 +157,8 @@ func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 	if len(filter.Impacts) > 0 {
 		var sub []string
 		for _, imp := range filter.Impacts {
-			sub = append(sub, fmt.Sprintf(`r["impact"] == "%s"`, string(imp)))
+			cleanImp := strings.ReplaceAll(string(imp), `"`, "")
+			sub = append(sub, fmt.Sprintf(`r["impact"] == "%s"`, cleanImp))
 		}
 		filterConditions = append(filterConditions, fmt.Sprintf("(%s)", strings.Join(sub, " or ")))
 	}
@@ -194,9 +201,13 @@ func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string
 
 		var e forexfactory.Event
 
-		// Map tags
-		e.Currency = record.ValueByKey("currency").(string)
-		e.Impact = forexfactory.Impact(record.ValueByKey("impact").(string))
+		// Map tags safely
+		if curVal, ok := record.ValueByKey("currency").(string); ok {
+			e.Currency = curVal
+		}
+		if impVal, ok := record.ValueByKey("impact").(string); ok {
+			e.Impact = forexfactory.Impact(impVal)
+		}
 
 		allDayStr, _ := record.ValueByKey("is_all_day").(string)
 		e.IsAllDay = allDayStr == "true"

@@ -4,6 +4,13 @@ import os
 import platform
 from datetime import datetime
 
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
+
 class ForexFactoryClient:
     """
     ForexFactoryClient wraps the high-performance Go forexfactory-go library
@@ -68,6 +75,10 @@ class ForexFactoryClient:
         self.lib.FetchRangeJSON.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
         self.lib.FetchRangeJSON.restype = ctypes.c_void_p
         
+        if hasattr(self.lib, 'FetchLiveFeedJSON'):
+            self.lib.FetchLiveFeedJSON.argtypes = [ctypes.c_longlong]
+            self.lib.FetchLiveFeedJSON.restype = ctypes.c_void_p
+        
         self.lib.FreeString.argtypes = [ctypes.c_void_p]
         self.lib.FreeString.restype = None
 
@@ -88,24 +99,35 @@ class ForexFactoryClient:
         if self.handle <= 0:
             raise RuntimeError("Failed to initialize Go ForexFactory Client via CGO bindings.")
 
-    def fetch_week(self, date: datetime) -> list:
+    def _to_dataframe_or_list(self, data, as_dataframe: bool):
+        if as_dataframe:
+            if HAS_PANDAS:
+                df = pd.DataFrame(data)
+                if not df.empty and "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"])
+                return df
+            return data
+        return data
+
+    def fetch_week(self, date: datetime, as_dataframe: bool = False):
         """
         Fetches calendar events for the week containing the specified date.
         
         :param date: datetime object.
-        :return: List of events.
+        :param as_dataframe: If True, returns Pandas DataFrame.
+        :return: List of events or DataFrame.
         """
         ts = int(date.timestamp())
         res_ptr = self.lib.FetchWeekJSON(self.handle, ts)
         if not res_ptr:
-            return []
+            return self._to_dataframe_or_list([], as_dataframe)
             
         try:
             res_str = ctypes.string_at(res_ptr).decode('utf-8')
             data = json.loads(res_str)
             if isinstance(data, dict) and "error" in data:
                 raise RuntimeError(data["error"])
-            return data
+            return self._to_dataframe_or_list(data, as_dataframe)
         finally:
             self.lib.FreeString(res_ptr)
 
@@ -123,25 +145,37 @@ class ForexFactoryClient:
         
         res_ptr = self.lib.FetchRangeJSON(self.handle, start_ts, end_ts)
         if not res_ptr:
-            return pd.DataFrame() if as_dataframe else []
+            return self._to_dataframe_or_list([], as_dataframe)
             
         try:
             res_str = ctypes.string_at(res_ptr).decode('utf-8')
             data = json.loads(res_str)
             if isinstance(data, dict) and "error" in data:
                 raise RuntimeError(data["error"])
+            return self._to_dataframe_or_list(data, as_dataframe)
+        finally:
+            self.lib.FreeString(res_ptr)
+
+    def fetch_live_feed(self, as_dataframe: bool = False):
+        """
+        Fetches real-time calendar events from the live weekly XML feed.
+        
+        :param as_dataframe: If True, returns Pandas DataFrame.
+        :return: List of dicts or Pandas DataFrame.
+        """
+        if not hasattr(self.lib, 'FetchLiveFeedJSON'):
+            raise NotImplementedError("FetchLiveFeedJSON is not available in the compiled shared library.")
             
-            if as_dataframe:
-                try:
-                    import pandas as pd
-                    df = pd.DataFrame(data)
-                    if not df.empty and "date" in df.columns:
-                        df["date"] = pd.to_datetime(df["date"])
-                    return df
-                except ImportError:
-                    # Fallback to dictionary list if pandas is not installed
-                    return data
-            return data
+        res_ptr = self.lib.FetchLiveFeedJSON(self.handle)
+        if not res_ptr:
+            return self._to_dataframe_or_list([], as_dataframe)
+            
+        try:
+            res_str = ctypes.string_at(res_ptr).decode('utf-8')
+            data = json.loads(res_str)
+            if isinstance(data, dict) and "error" in data:
+                raise RuntimeError(data["error"])
+            return self._to_dataframe_or_list(data, as_dataframe)
         finally:
             self.lib.FreeString(res_ptr)
 
@@ -149,9 +183,12 @@ class ForexFactoryClient:
         """
         Closes the client and safely frees all browser resources.
         """
-        if hasattr(self, 'handle') and self.handle > 0:
+        if hasattr(self, 'lib') and self.lib is not None and hasattr(self, 'handle') and self.handle > 0:
             self.lib.FreeClient(self.handle)
             self.handle = 0
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass

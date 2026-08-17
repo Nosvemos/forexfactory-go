@@ -56,7 +56,10 @@ type ClientOptions struct {
 
 //export InitClient
 func InitClient(optsJSON *C.char) C.longlong {
-	goStr := C.GoString(optsJSON)
+	var goStr string
+	if optsJSON != nil {
+		goStr = C.GoString(optsJSON)
+	}
 	var opts ClientOptions
 
 	// Default values
@@ -141,6 +144,30 @@ func FetchRangeJSON(handle C.longlong, startTS C.longlong, endTS C.longlong) *C.
 	end := time.Unix(int64(endTS), 0).UTC()
 
 	events, err := client.FetchRange(context.Background(), start, end)
+	if err != nil {
+		errMap := map[string]string{"error": err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return C.CString(string(errJSON))
+	}
+
+	resJSON, err := json.Marshal(events)
+	if err != nil {
+		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return C.CString(string(errJSON))
+	}
+
+	return C.CString(string(resJSON))
+}
+
+//export FetchLiveFeedJSON
+func FetchLiveFeedJSON(handle C.longlong) *C.char {
+	client := getClient(int64(handle))
+	if client == nil {
+		return C.CString(`{"error": "client handle not found"}`)
+	}
+
+	events, err := client.FetchLiveFeed(context.Background())
 	if err != nil {
 		errMap := map[string]string{"error": err.Error()}
 		errJSON, _ := json.Marshal(errMap)

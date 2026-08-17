@@ -43,14 +43,14 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS events (
-		id VARCHAR(128) PRIMARY KEY,
-		title VARCHAR(256),
-		currency VARCHAR(32),
+		id TEXT PRIMARY KEY,
+		title TEXT,
+		currency TEXT,
 		date TIMESTAMPTZ,
-		impact VARCHAR(64),
-		forecast VARCHAR(128),
-		previous VARCHAR(128),
-		actual VARCHAR(128),
+		impact TEXT,
+		forecast TEXT,
+		previous TEXT,
+		actual TEXT,
 		all_day BOOLEAN,
 		tentative BOOLEAN
 	);
@@ -70,6 +70,9 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexfactory.Event) error {
 	if p.db == nil {
 		return fmt.Errorf("database not initialized, call Init() first")
+	}
+	if len(events) == 0 {
+		return nil
 	}
 
 	tx, err := p.db.BeginTx(ctx, nil)

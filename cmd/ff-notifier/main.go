@@ -22,6 +22,8 @@ import (
 
 var (
 	discordWebhookFlag  string
+	slackWebhookFlag    string
+	genericWebhookFlag  string
 	telegramTokenFlag   string
 	telegramChatFlag    string
 	pollingIntervalFlag time.Duration
@@ -35,9 +37,9 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "ff-notifier",
-	Short: "ff-notifier: Real-time Discord/Telegram Economic News Alert Daemon",
+	Short: "ff-notifier: Real-time Discord/Slack/Telegram Economic News Alert Daemon",
 	Long: `ff-notifier is an enterprise-grade economic calendar alert daemon that polls 
-the live Forex Factory XML feed and dispatches rich card alerts to Discord and Telegram channels 
+the live Forex Factory XML feed and dispatches rich card alerts to Discord, Slack, Telegram, and generic webhooks 
 exactly 15 minutes (or customizable lead time) before high-impact economic news releases.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		executeNotifier()
@@ -46,6 +48,8 @@ exactly 15 minutes (or customizable lead time) before high-impact economic news 
 
 func init() {
 	rootCmd.Flags().StringVar(&discordWebhookFlag, "discord-webhook", "", "Discord Webhook URL for rich channel alerts")
+	rootCmd.Flags().StringVar(&slackWebhookFlag, "slack-webhook", "", "Slack Incoming Webhook URL for channel alerts")
+	rootCmd.Flags().StringVar(&genericWebhookFlag, "generic-webhook", "", "Generic HTTP POST Webhook URL for custom alert ingestion")
 	rootCmd.Flags().StringVar(&telegramTokenFlag, "telegram-token", "", "Telegram Bot API Token (e.g. 123456789:ABCDef...)")
 	rootCmd.Flags().StringVar(&telegramChatFlag, "telegram-chat", "", "Telegram Channel or Group Chat ID to send alerts to")
 	rootCmd.Flags().DurationVarP(&pollingIntervalFlag, "interval", "i", 60*time.Second, "Polling interval to check for calendar updates")
@@ -93,6 +97,7 @@ func executeNotifier() {
 	client := forexfactory.NewClient(
 		forexfactory.WithTimeLocation(time.UTC),
 	)
+	defer client.Close()
 
 	// Load previously notified events cache to prevent duplicate alerts on restart
 	loadNotifiedCache()
@@ -173,6 +178,26 @@ func checkAndAlert(client *forexfactory.Client, minImpact forexfactory.Impact) {
 					defer wg.Done()
 					if err := sendDiscordAlert(event, rem); err != nil {
 						log.Printf("Discord Alert failed: %v", err)
+					}
+				}(e, minutesRemaining)
+			}
+
+			if slackWebhookFlag != "" {
+				wg.Add(1)
+				go func(event forexfactory.Event, rem int) {
+					defer wg.Done()
+					if err := sendSlackAlert(event, rem); err != nil {
+						log.Printf("Slack Alert failed: %v", err)
+					}
+				}(e, minutesRemaining)
+			}
+
+			if genericWebhookFlag != "" {
+				wg.Add(1)
+				go func(event forexfactory.Event, rem int) {
+					defer wg.Done()
+					if err := sendGenericWebhookAlert(event, rem); err != nil {
+						log.Printf("Generic Webhook Alert failed: %v", err)
 					}
 				}(e, minutesRemaining)
 			}
@@ -287,6 +312,10 @@ func saveNotifiedCache() {
 	_ = os.WriteFile(path, data, 0600)
 }
 
+var webhookHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 func sendDiscordAlert(e forexfactory.Event, minutesLeft int) error {
 	color := 9807270 // Gray
 	emoji := "⚪"
@@ -330,7 +359,7 @@ func sendDiscordAlert(e forexfactory.Event, minutesLeft int) error {
 		return err
 	}
 
-	resp, err := http.Post(discordWebhookFlag, "application/json", bytes.NewBuffer(body))
+	resp, err := webhookHTTPClient.Post(discordWebhookFlag, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
@@ -381,7 +410,7 @@ func sendTelegramAlert(e forexfactory.Event, minutesLeft int) error {
 		"parse_mode": {"Markdown"},
 	}
 
-	resp, err := http.PostForm(apiURL, formData)
+	resp, err := webhookHTTPClient.PostForm(apiURL, formData)
 	if err != nil {
 		return err
 	}
@@ -389,6 +418,90 @@ func sendTelegramAlert(e forexfactory.Event, minutesLeft int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status response from telegram: %s", resp.Status)
+	}
+
+	return nil
+}
+
+func sendSlackAlert(e forexfactory.Event, minutesLeft int) error {
+	emoji := ":white_circle:"
+	switch e.Impact {
+	case forexfactory.ImpactHigh:
+		emoji = ":red_circle:"
+	case forexfactory.ImpactMedium:
+		emoji = ":large_orange_circle:"
+	case forexfactory.ImpactLow:
+		emoji = ":large_green_circle:"
+	}
+
+	payload := map[string]interface{}{
+		"blocks": []map[string]interface{}{
+			{
+				"type": "header",
+				"text": map[string]string{
+					"type": "plain_text",
+					"text": fmt.Sprintf("%s Economic Event Warning", emoji),
+				},
+			},
+			{
+				"type": "section",
+				"text": map[string]string{
+					"type": "mrkdwn",
+					"text": fmt.Sprintf("*%s* is releasing in *%d minutes*!", e.Title, minutesLeft),
+				},
+			},
+			{
+				"type": "section",
+				"fields": []map[string]string{
+					{"type": "mrkdwn", "text": fmt.Sprintf("*Currency:*\n%s", e.Currency)},
+					{"type": "mrkdwn", "text": fmt.Sprintf("*Impact:*\n%s", string(e.Impact))},
+					{"type": "mrkdwn", "text": fmt.Sprintf("*Scheduled Time:*\n%s", e.Date.UTC().Format("15:04 UTC"))},
+					{"type": "mrkdwn", "text": fmt.Sprintf("*Forecast:*\n%s", getValOrDash(e.Forecast))},
+					{"type": "mrkdwn", "text": fmt.Sprintf("*Previous:*\n%s", getValOrDash(e.Previous))},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	resp, err := webhookHTTPClient.Post(slackWebhookFlag, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("bad status response from slack: %s", resp.Status)
+	}
+
+	return nil
+}
+
+func sendGenericWebhookAlert(e forexfactory.Event, minutesLeft int) error {
+	payload := map[string]interface{}{
+		"event":        e,
+		"minutes_left": minutesLeft,
+		"timestamp":    time.Now().UTC().Unix(),
+		"source":       "forexfactory-go",
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	resp, err := webhookHTTPClient.Post(genericWebhookFlag, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("bad status response from generic webhook: %s", resp.Status)
 	}
 
 	return nil

@@ -31,7 +31,10 @@ type XMLEvent struct {
 }
 
 // parseDetailID regex to extract digits from show details URL
-var showIDRegex = regexp.MustCompile(`show=(\d+)|\/(\d+)$`)
+var (
+	showIDRegex        = regexp.MustCompile(`(?:show=|(?:^|/)event/|(?:^|/)calendar/|^/)(\d+)`)
+	weekdayPrefixRegex = regexp.MustCompile(`^(?i)(?:sun|mon|tue|wed|thu|fri|sat|sunday|monday|tuesday|wednesday|thursday|friday|saturday)[,\s\.]+`)
+)
 
 // ParseXML parses the XML feed data into a list of Event structs.
 func ParseXML(data []byte, targetLoc *time.Location) ([]Event, error) {
@@ -72,17 +75,15 @@ func ParseXML(data []byte, targetLoc *time.Location) ([]Event, error) {
 		dateStr := strings.TrimSpace(x.Date) // MM-DD-YYYY
 		timeStr := strings.ToLower(strings.TrimSpace(x.Time))
 
-		if timeStr == "all day" || timeStr == "holiday" || timeStr == "" {
+		if timeStr == "all day" || timeStr == "holiday" || timeStr == "" || strings.HasPrefix(timeStr, "day ") {
 			e.IsAllDay = true
 		} else if strings.Contains(timeStr, "tentative") {
 			e.IsTentative = true
 		}
 
-		// Parse Date
+		// Parse Date (source XML feed is formatted in UTC/Eastern time)
 		var parsedTime time.Time
 		var err error
-
-		// Assume XML dates are in UTC
 		sourceLoc := time.UTC
 
 		if e.IsAllDay || e.IsTentative {
@@ -123,10 +124,12 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 		return nil, fmt.Errorf("failed to load HTML document: %w", err)
 	}
 
-	// Calculate the 7 dates for the week Sunday -> Saturday
-	weekDates := make([]time.Time, 7)
+	// Pre-index the 7 dates in a fast lookup map: "Month-Day" -> time.Time
+	weekDatesMap := make(map[string]time.Time, 7)
 	for i := 0; i < 7; i++ {
-		weekDates[i] = sunday.AddDate(0, 0, i)
+		d := sunday.AddDate(0, 0, i)
+		key := fmt.Sprintf("%d-%d", d.Month(), d.Day())
+		weekDatesMap[key] = d
 	}
 
 	var events []Event
@@ -154,6 +157,8 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 		dateStr := strings.TrimSpace(dateCell.Text())
 		if dateStr != "" {
 			lastDateStr = dateStr
+			// Reset lastTimeStr on a new date to prevent leaking the previous day's time
+			lastTimeStr = ""
 		}
 
 		// Extract Time
@@ -185,12 +190,7 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 			href, _ := detailAnchor.Attr("href")
 			matches := showIDRegex.FindStringSubmatch(href)
 			if len(matches) > 1 {
-				for _, match := range matches[1:] {
-					if match != "" {
-						detailID = match
-						break
-					}
-				}
+				detailID = matches[1]
 			}
 		}
 
@@ -212,31 +212,27 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 
 		// Process Date and Time fields
 		lowTime := strings.ToLower(lastTimeStr)
-		if lowTime == "all day" || lowTime == "holiday" || lowTime == "" {
+		if lowTime == "all day" || lowTime == "holiday" || lowTime == "" || strings.HasPrefix(lowTime, "day ") {
 			e.IsAllDay = true
 		} else if strings.Contains(lowTime, "tentative") {
 			e.IsTentative = true
 		}
 
-		// Parse combined date and time
-		// lastDateStr format is usually "Mon May 25" or "May 25"
-		// We remove the day prefix (e.g. "Mon ") to make it cleaner
-		cleanDateStr := lastDateStr
-		if idx := strings.Index(cleanDateStr, " "); idx != -1 && idx < 4 {
-			cleanDateStr = cleanDateStr[idx+1:]
+		// Clean date string by stripping any weekday name prefix (e.g. "Mon May 25" -> "May 25", "May 25" -> "May 25")
+		cleanDateStr := strings.TrimSpace(weekdayPrefixRegex.ReplaceAllString(lastDateStr, ""))
+		if cleanDateStr == "" {
+			cleanDateStr = lastDateStr
 		}
 
-		// Find exact date in weekDates by matching month and day
+		// Find exact date in weekDatesMap by matching month and day
 		var eventDate time.Time
 		foundDate := false
 		parsedMD, err := time.Parse("Jan 2", cleanDateStr)
 		if err == nil {
-			for _, d := range weekDates {
-				if d.Month() == parsedMD.Month() && d.Day() == parsedMD.Day() {
-					eventDate = d
-					foundDate = true
-					break
-				}
+			key := fmt.Sprintf("%d-%d", parsedMD.Month(), parsedMD.Day())
+			if d, ok := weekDatesMap[key]; ok {
+				eventDate = d
+				foundDate = true
 			}
 		}
 
@@ -282,7 +278,6 @@ func ParseHTMLWithSunday(r io.Reader, sunday time.Time, targetLoc *time.Location
 // By default, it assumes Sunday falls in refYear, and creates a simulated Sunday time.Time
 // to call ParseHTMLWithSunday. It also supports year transition tracking in case of cross-year weeks.
 func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, error) {
-	// Parse with a smart year transition heuristic if Sunday's exact date is not provided
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load HTML document: %w", err)
@@ -315,6 +310,8 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 		dateStr := strings.TrimSpace(dateCell.Text())
 		if dateStr != "" {
 			lastDateStr = dateStr
+			// Reset lastTimeStr on a new date to prevent leaking previous day's time
+			lastTimeStr = ""
 		}
 
 		// Extract Time
@@ -346,12 +343,7 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 			href, _ := detailAnchor.Attr("href")
 			matches := showIDRegex.FindStringSubmatch(href)
 			if len(matches) > 1 {
-				for _, match := range matches[1:] {
-					if match != "" {
-						detailID = match
-						break
-					}
-				}
+				detailID = matches[1]
 			}
 		}
 
@@ -373,18 +365,16 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 
 		// Process Date and Time fields
 		lowTime := strings.ToLower(lastTimeStr)
-		if lowTime == "all day" || lowTime == "holiday" || lowTime == "" {
+		if lowTime == "all day" || lowTime == "holiday" || lowTime == "" || strings.HasPrefix(lowTime, "day ") {
 			e.IsAllDay = true
 		} else if strings.Contains(lowTime, "tentative") {
 			e.IsTentative = true
 		}
 
-		// Parse combined date and time
-		// lastDateStr format is usually "Mon May 25" or "May 25"
-		// We remove the day prefix (e.g. "Mon ") to make it cleaner
-		cleanDateStr := lastDateStr
-		if idx := strings.Index(cleanDateStr, " "); idx != -1 && idx < 4 {
-			cleanDateStr = cleanDateStr[idx+1:]
+		// Clean date string by stripping any weekday name prefix (e.g. "Mon May 25" -> "May 25")
+		cleanDateStr := strings.TrimSpace(weekdayPrefixRegex.ReplaceAllString(lastDateStr, ""))
+		if cleanDateStr == "" {
+			cleanDateStr = lastDateStr
 		}
 
 		// Smart Year Straddling detection
@@ -429,4 +419,81 @@ func ParseHTML(r io.Reader, refYear int, targetLoc *time.Location) ([]Event, err
 	})
 
 	return events, nil
+}
+
+// ParseEventDetail parses rich specifications and historical releases from an event detail page.
+func ParseEventDetail(r io.Reader, eventID string) (*EventDetail, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse event detail HTML: %w", err)
+	}
+
+	detail := &EventDetail{
+		ID: eventID,
+	}
+
+	// Extract Title & Currency if available in header or spec title
+	titleText := strings.TrimSpace(doc.Find(".calendar__event-title, .calendarspecs__spec-title, h1").First().Text())
+	if titleText != "" {
+		detail.Title = titleText
+	}
+
+	// Parse Specs table
+	doc.Find("tr, .calendarspecs__spec").Each(func(i int, s *goquery.Selection) {
+		label := strings.ToLower(strings.TrimSpace(s.Find(".calendarspecs__specname, th, td:first-child").Text()))
+		val := strings.TrimSpace(s.Find(".calendarspecs__specdescription, td:last-child").Text())
+		if val == "" {
+			return
+		}
+
+		if strings.Contains(label, "source") {
+			detail.Source = val
+		} else if strings.Contains(label, "measures") {
+			detail.Measures = val
+		} else if strings.Contains(label, "usual effect") {
+			detail.UsualEffect = val
+		} else if strings.Contains(label, "frequency") {
+			detail.Frequency = val
+		} else if strings.Contains(label, "next release") {
+			detail.NextRelease = val
+		} else if strings.Contains(label, "why traders care") || strings.Contains(label, "notes") {
+			detail.WhyTradersCare = val
+		}
+	})
+
+	// Parse History Table
+	doc.Find("table.calendar__history tr, table.history tr, .history tr").Each(func(i int, s *goquery.Selection) {
+		dateStr := strings.TrimSpace(s.Find("td.history__date, td:nth-child(1)").Text())
+		actualStr := strings.TrimSpace(s.Find("td.history__actual, td:nth-child(2)").Text())
+		forecastStr := strings.TrimSpace(s.Find("td.history__forecast, td:nth-child(3)").Text())
+		previousStr := strings.TrimSpace(s.Find("td.history__previous, td:nth-child(4)").Text())
+
+		if dateStr == "" || strings.EqualFold(dateStr, "date") {
+			return // Skip header
+		}
+
+		var parsedDate time.Time
+		formats := []string{
+			"Jan 2, 2006",
+			"Jan 02, 2006",
+			"2006-01-02",
+			"01/02/2006",
+			"Jan 2",
+		}
+		for _, f := range formats {
+			if t, err := time.Parse(f, dateStr); err == nil {
+				parsedDate = t
+				break
+			}
+		}
+
+		detail.History = append(detail.History, EventHistoryRecord{
+			Date:     parsedDate,
+			Actual:   actualStr,
+			Forecast: forecastStr,
+			Previous: previousStr,
+		})
+	})
+
+	return detail, nil
 }

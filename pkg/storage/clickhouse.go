@@ -88,6 +88,9 @@ func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []forexfactor
 	if c.conn == nil {
 		return fmt.Errorf("clickhouse connection not initialized, call Init() first")
 	}
+	if len(events) == 0 {
+		return nil
+	}
 
 	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO events (id, title, currency, date, impact, forecast, previous, actual, all_day, tentative)")
 	if err != nil {

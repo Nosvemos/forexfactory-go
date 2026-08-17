@@ -221,3 +221,206 @@ func TestParseHTMLYearStraddling(t *testing.T) {
 		t.Errorf("Expected legacy Jan 1 to transition to 2026, got year %d", events2[1].Date.Year())
 	}
 }
+
+func TestParseHTMLStandaloneMonthDate(t *testing.T) {
+	// Tests HTML calendar where date column contains only "May 25" (no weekday name)
+	mockHTML := `<html><body>
+	<table class="calendar__table">
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">May 25</td>
+			<td class="calendar__cell calendar__time">8:30am</td>
+			<td class="calendar__cell calendar__currency">USD</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-red">High</span></td>
+			<td class="calendar__cell calendar__event"><a href="/calendar/123456-cpi">Core CPI m/m</a></td>
+			<td class="calendar__cell calendar__actual">0.3%</td>
+			<td class="calendar__cell calendar__forecast">0.2%</td>
+			<td class="calendar__cell calendar__previous">0.1%</td>
+		</tr>
+	</table></body></html>`
+
+	sunday := time.Date(2026, time.May, 24, 0, 0, 0, 0, time.UTC)
+	r := bytes.NewReader([]byte(mockHTML))
+	events, err := ParseHTMLWithSunday(r, sunday, time.UTC)
+	if err != nil {
+		t.Fatalf("ParseHTMLWithSunday failed: %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+
+	e := events[0]
+	if e.Date.Year() != 2026 || e.Date.Month() != time.May || e.Date.Day() != 25 {
+		t.Errorf("Expected parsed date 2026-05-25, got %v", e.Date)
+	}
+	if e.ID != "123456" {
+		t.Errorf("Expected ID '123456', got %q", e.ID)
+	}
+}
+
+func TestParseHTMLTimeLeakPrevention(t *testing.T) {
+	// Tests that event on Monday at 10:00pm does NOT leak its time to Tuesday's all-day event
+	mockHTML := `<html><body>
+	<table class="calendar__table">
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">Mon May 25</td>
+			<td class="calendar__cell calendar__time">10:00pm</td>
+			<td class="calendar__cell calendar__currency">USD</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-red">High</span></td>
+			<td class="calendar__cell calendar__event"><a href="show=111">Late Event</a></td>
+			<td class="calendar__cell calendar__actual"></td>
+			<td class="calendar__cell calendar__forecast"></td>
+			<td class="calendar__cell calendar__previous"></td>
+		</tr>
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">Tue May 26</td>
+			<td class="calendar__cell calendar__time"></td>
+			<td class="calendar__cell calendar__currency">EUR</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-yellow">Low</span></td>
+			<td class="calendar__cell calendar__event"><a href="show=222">Holiday Event</a></td>
+			<td class="calendar__cell calendar__actual"></td>
+			<td class="calendar__cell calendar__forecast"></td>
+			<td class="calendar__cell calendar__previous"></td>
+		</tr>
+	</table></body></html>`
+
+	sunday := time.Date(2026, time.May, 24, 0, 0, 0, 0, time.UTC)
+	r := bytes.NewReader([]byte(mockHTML))
+	events, err := ParseHTMLWithSunday(r, sunday, time.UTC)
+	if err != nil {
+		t.Fatalf("ParseHTMLWithSunday failed: %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("Expected 2 events, got %d", len(events))
+	}
+
+	e1 := events[0]
+	e2 := events[1]
+
+	if e1.Date.Hour() != 22 || e1.Date.Minute() != 0 {
+		t.Errorf("Expected Event 1 to be at 22:00, got %v", e1.Date)
+	}
+
+	if !e2.IsAllDay {
+		t.Errorf("Expected Event 2 with empty time on new day to be marked IsAllDay")
+	}
+	if e2.Date.Hour() != 0 || e2.Date.Minute() != 0 {
+		t.Errorf("Expected Event 2 to be at 00:00 (All Day), got %v (leaked from Event 1)", e2.Date)
+	}
+}
+
+func TestParseHTMLMultiDayAndSlugs(t *testing.T) {
+	mockHTML := `<html><body>
+	<table class="calendar__table">
+		<tr class="calendar__row">
+			<td class="calendar__cell calendar__date">Wed May 27</td>
+			<td class="calendar__cell calendar__time">Day 1</td>
+			<td class="calendar__cell calendar__currency">ALL</td>
+			<td class="calendar__cell calendar__impact"><span class="icon--impact-red">High</span></td>
+			<td class="calendar__cell calendar__event"><a href="/calendar/event/778899-opec-meeting">OPEC-JMMC Meetings</a></td>
+			<td class="calendar__cell calendar__actual"></td>
+			<td class="calendar__cell calendar__forecast"></td>
+			<td class="calendar__cell calendar__previous"></td>
+		</tr>
+	</table></body></html>`
+
+	sunday := time.Date(2026, time.May, 24, 0, 0, 0, 0, time.UTC)
+	r := bytes.NewReader([]byte(mockHTML))
+	events, err := ParseHTMLWithSunday(r, sunday, time.UTC)
+	if err != nil {
+		t.Fatalf("ParseHTMLWithSunday failed: %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+
+	e := events[0]
+	if !e.IsAllDay {
+		t.Errorf("Expected 'Day 1' event to be IsAllDay = true")
+	}
+	if e.ID != "778899" {
+		t.Errorf("Expected extracted ID '778899', got %q", e.ID)
+	}
+}
+
+func TestParseEventDetail(t *testing.T) {
+	mockDetailHTML := `<html><body>
+		<h1 class="calendar__event-title">Non-Farm Employment Change</h1>
+		<div class="calendarspecs">
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Source</div>
+				<div class="calendarspecs__specdescription">Bureau of Labor Statistics</div>
+			</div>
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Measures</div>
+				<div class="calendarspecs__specdescription">Change in the number of employed people</div>
+			</div>
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Usual Effect</div>
+				<div class="calendarspecs__specdescription">'Actual' > 'Forecast' is good for currency</div>
+			</div>
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Frequency</div>
+				<div class="calendarspecs__specdescription">Released monthly</div>
+			</div>
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Next Release</div>
+				<div class="calendarspecs__specdescription">Jun 5, 2026</div>
+			</div>
+			<div class="calendarspecs__spec">
+				<div class="calendarspecs__specname">Why Traders Care</div>
+				<div class="calendarspecs__specdescription">Job creation is the foremost indicator of consumer spending</div>
+			</div>
+		</div>
+		<table class="calendar__history">
+			<tr>
+				<th>Date</th><th>Actual</th><th>Forecast</th><th>Previous</th>
+			</tr>
+			<tr>
+				<td class="history__date">May 8, 2026</td>
+				<td class="history__actual">175K</td>
+				<td class="history__forecast">180K</td>
+				<td class="history__previous">315K</td>
+			</tr>
+			<tr>
+				<td class="history__date">Apr 3, 2026</td>
+				<td class="history__actual">303K</td>
+				<td class="history__forecast">212K</td>
+				<td class="history__previous">270K</td>
+			</tr>
+		</table>
+	</body></html>`
+
+	r := bytes.NewReader([]byte(mockDetailHTML))
+	detail, err := ParseEventDetail(r, "554433")
+	if err != nil {
+		t.Fatalf("ParseEventDetail failed: %v", err)
+	}
+
+	if detail.ID != "554433" {
+		t.Errorf("Expected ID '554433', got %s", detail.ID)
+	}
+	if detail.Title != "Non-Farm Employment Change" {
+		t.Errorf("Expected Title 'Non-Farm Employment Change', got %s", detail.Title)
+	}
+	if detail.Source != "Bureau of Labor Statistics" {
+		t.Errorf("Expected Source 'Bureau of Labor Statistics', got %s", detail.Source)
+	}
+	if detail.UsualEffect != "'Actual' > 'Forecast' is good for currency" {
+		t.Errorf("Expected UsualEffect matched, got %s", detail.UsualEffect)
+	}
+
+	if len(detail.History) != 2 {
+		t.Fatalf("Expected 2 history rows, got %d", len(detail.History))
+	}
+
+	h1 := detail.History[0]
+	if h1.Date.Year() != 2026 || h1.Date.Month() != time.May || h1.Date.Day() != 8 {
+		t.Errorf("Expected date 2026-05-08, got %v", h1.Date)
+	}
+	if h1.Actual != "175K" || h1.Forecast != "180K" || h1.Previous != "315K" {
+		t.Errorf("Unexpected history values: %v", h1)
+	}
+}

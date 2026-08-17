@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -123,5 +124,62 @@ func TestSQLiteStorage(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("Expected 1 EUR row from auto-generation, got %d", count)
+	}
+}
+
+func TestSQLiteStorageEmptyEvents(t *testing.T) {
+	dbPath := "test_empty.db"
+	defer os.Remove(dbPath)
+
+	store := NewSQLiteStorage(dbPath)
+	ctx := context.Background()
+
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveEvents(ctx, []forexfactory.Event{}); err != nil {
+		t.Fatalf("Expected saving empty events slice to succeed, got %v", err)
+	}
+}
+
+func TestSQLiteStorageBatchLarge(t *testing.T) {
+	dbPath := "test_large_batch.db"
+	defer os.Remove(dbPath)
+
+	store := NewSQLiteStorage(dbPath)
+	ctx := context.Background()
+
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+	defer store.Close()
+
+	var events []forexfactory.Event
+	baseDate := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 250; i++ {
+		events = append(events, forexfactory.Event{
+			ID:       fmt.Sprintf("batch-event-%d", i),
+			Title:    fmt.Sprintf("Economic Release #%d", i),
+			Currency: "USD",
+			Date:     baseDate.Add(time.Duration(i) * time.Hour),
+			Impact:   forexfactory.ImpactHigh,
+			Forecast: "1.0%",
+			Previous: "0.8%",
+			Actual:   "1.2%",
+		})
+	}
+
+	if err := store.SaveEvents(ctx, events); err != nil {
+		t.Fatalf("SaveEvents failed on 250 batch events: %v", err)
+	}
+
+	queried, err := store.GetEvents(ctx, baseDate, baseDate.Add(300*time.Hour))
+	if err != nil {
+		t.Fatalf("GetEvents failed: %v", err)
+	}
+	if len(queried) != 250 {
+		t.Errorf("Expected 250 events, got %d", len(queried))
 	}
 }

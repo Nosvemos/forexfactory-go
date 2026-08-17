@@ -104,3 +104,30 @@ func WithHeadless(headless bool) Option {
 		c.headless = headless
 	}
 }
+
+// WithProxyPool returns an Option that configures a rotating list of proxy servers.
+func WithProxyPool(proxies []string) Option {
+	return func(c *Client) {
+		if len(proxies) > 0 {
+			c.proxyPool = proxies
+		}
+	}
+}
+
+// WithUserAgentPool returns an Option that configures a rotating pool of browser User-Agent strings.
+func WithUserAgentPool(userAgents []string) Option {
+	return func(c *Client) {
+		if len(userAgents) > 0 {
+			c.userAgentPool = userAgents
+		}
+	}
+}
+
+// WithMaxRetries returns an Option that sets the maximum number of network/transient retry attempts.
+func WithMaxRetries(retries int) Option {
+	return func(c *Client) {
+		if retries >= 0 {
+			c.maxRetries = retries
+		}
+	}
+}
