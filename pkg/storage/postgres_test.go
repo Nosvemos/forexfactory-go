@@ -25,6 +25,12 @@ func TestPostgresStorageWithMock(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
 
+	// 0. Test initSchema
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS events").WillReturnResult(sqlmock.NewResult(0, 0))
+	if err := store.initSchema(ctx); err != nil {
+		t.Fatalf("initSchema failed: %v", err)
+	}
+
 	// 1. Test SaveEvents
 	events := []tvcalendar.Event{
 		{
@@ -141,6 +147,21 @@ func TestPostgresStorageErrorRollback(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
+	// 1. Save empty events
+	if err := store.SaveEvents(ctx, []tvcalendar.Event{}); err != nil {
+		t.Errorf("Expected nil error on empty events, got %v", err)
+	}
+
+	// 2. Query error branches
+	mock.ExpectQuery("SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative FROM events").
+		WithArgs(now, now).
+		WillReturnError(fmt.Errorf("query table missing"))
+
+	if _, err := store.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on failing GetEvents, got nil")
+	}
+
+	// 3. Rollback on insert error
 	events := []tvcalendar.Event{
 		{
 			ID:       "err_event",

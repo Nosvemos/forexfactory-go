@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
+	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
 
 func TestDriversImplementsStorageInterface(t *testing.T) {
@@ -94,6 +95,76 @@ func TestInfluxDBFluxQueryBuilder(t *testing.T) {
 	}
 }
 
+func TestInfluxDBRecordParser(t *testing.T) {
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	record := query.NewFluxRecord(0, map[string]interface{}{
+		"_time":        now,
+		"id":           "influx-101",
+		"title":        "US Retail Sales",
+		"currency":     "USD",
+		"impact":       "High",
+		"forecast":     "0.5%",
+		"previous":     "0.4%",
+		"actual":       "0.6%",
+		"is_all_day":   "false",
+		"is_tentative": "false",
+	})
+
+	event := parseFluxRecord(record)
+	if event.ID != "influx-101" || event.Title != "US Retail Sales" || event.Impact != tvcalendar.ImpactHigh {
+		t.Errorf("Unexpected parsed InfluxDB event: %+v", event)
+	}
+	if event.Actual != "0.6%" || event.Forecast != "0.5%" {
+		t.Errorf("Values mismatch in InfluxDB event: %+v", event)
+	}
+
+	// Test true all_day and tentative
+	recordTrue := query.NewFluxRecord(0, map[string]interface{}{
+		"_time":        now,
+		"id":           "influx-102",
+		"title":        "Holiday",
+		"currency":     "USD",
+		"impact":       "None",
+		"is_all_day":   "true",
+		"is_tentative": "true",
+	})
+	eventTrue := parseFluxRecord(recordTrue)
+	if !eventTrue.IsAllDay || !eventTrue.IsTentative {
+		t.Errorf("Expected IsAllDay=true and IsTentative=true for parsed InfluxDB record")
+	}
+}
+
+func TestPrepareDriverRecords(t *testing.T) {
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	e := tvcalendar.Event{
+		ID:          "", // Test fallback ID generation
+		Title:       "Test Rate Decision",
+		Currency:    "EUR",
+		Date:        now,
+		Impact:      tvcalendar.ImpactHigh,
+		Forecast:    "4.0%",
+		Previous:    "3.75%",
+		Actual:      "4.0%",
+		IsAllDay:    true,
+		IsTentative: true,
+	}
+
+	// 1. ClickHouse record preparation
+	id, title, curr, dt, imp, forc, prev, act, allDay, tent := prepareClickHouseRecord(e)
+	if !strings.HasPrefix(id, "fallback-") || title != "Test Rate Decision" || curr != "EUR" {
+		t.Errorf("Unexpected ClickHouse prepared record: %s, %s, %s", id, title, curr)
+	}
+	if allDay != 1 || tent != 1 || imp != "High" || forc != "4.0%" || prev != "3.75%" || act != "4.0%" || dt != now {
+		t.Errorf("Unexpected ClickHouse field values")
+	}
+
+	// 2. InfluxDB point preparation
+	p := prepareInfluxPoint(e)
+	if p.Name() != "economic_events" {
+		t.Errorf("Expected Influx point name 'economic_events', got %s", p.Name())
+	}
+}
+
 func TestDriversUninitializedErrors(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
@@ -139,8 +210,19 @@ func TestDriversUninitializedErrors(t *testing.T) {
 	if _, err := infStore.GetEventsByCurrency(ctx, "USD"); err == nil {
 		t.Errorf("Expected error on uninitialized InfluxDB GetEventsByCurrency, got nil")
 	}
-	if _, err := infStore.QueryEvents(ctx, QueryFilter{}); err == nil {
-		t.Errorf("Expected error on uninitialized InfluxDB QueryEvents, got nil")
+	// 4. SQLite Uninitialized
+	sqliteStore := NewSQLiteStorage("")
+	if err := sqliteStore.SaveEvents(ctx, []tvcalendar.Event{}); err == nil {
+		t.Errorf("Expected error when saving on uninitialized SQLite, got nil")
+	}
+	if _, err := sqliteStore.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on uninitialized SQLite GetEvents, got nil")
+	}
+	if _, err := sqliteStore.GetEventsByCurrency(ctx, "USD"); err == nil {
+		t.Errorf("Expected error on uninitialized SQLite GetEventsByCurrency, got nil")
+	}
+	if _, err := sqliteStore.QueryEvents(ctx, QueryFilter{}); err == nil {
+		t.Errorf("Expected error on uninitialized SQLite QueryEvents, got nil")
 	}
 }
 

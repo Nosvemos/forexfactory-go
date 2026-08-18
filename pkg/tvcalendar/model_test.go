@@ -121,6 +121,23 @@ func TestEventDeviationAndSurpriseAndBias(t *testing.T) {
 	if bias := unempGood.MarketBias(); bias != "Bullish" {
 		t.Errorf("MarketBias(jobless claims lower) = %q, want 'Bullish'", bias)
 	}
+	// Test equal actual and forecast
+	equalEvent := Event{
+		Title:    "Equal Data",
+		Actual:   "3.0%",
+		Forecast: "3.0%",
+	}
+	if bias := equalEvent.MarketBias(); bias != "Neutral" {
+		t.Errorf("Expected Neutral market bias for equal actual/forecast, got %s", bias)
+	}
+
+	// Test Parse helpers
+	actVal, _ := equalEvent.ParseActual()
+	forcVal, _ := equalEvent.ParseForecast()
+	prevVal, err := equalEvent.ParsePrevious()
+	if actVal != 3.0 || forcVal != 3.0 || err == nil || prevVal != 0 {
+		t.Errorf("Unexpected parse helper results: act=%v, forc=%v, prev=%v, err=%v", actVal, forcVal, prevVal, err)
+	}
 }
 
 func TestEventDateHelpers(t *testing.T) {

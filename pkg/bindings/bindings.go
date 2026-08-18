@@ -56,12 +56,7 @@ type ClientOptions struct {
 	Countries   []string `json:"countries"`
 }
 
-//export InitClient
-func InitClient(optsJSON *C.char) C.longlong {
-	var goStr string
-	if optsJSON != nil {
-		goStr = C.GoString(optsJSON)
-	}
+func initClientWithCustomOptions(goStr string, extraOpts ...tvcalendar.Option) int64 {
 	var opts ClientOptions
 
 	// Default values
@@ -105,9 +100,96 @@ func InitClient(optsJSON *C.char) C.longlong {
 		clientOpts = append(clientOpts, tvcalendar.WithCountryFilter(opts.Countries...))
 	}
 
-	client := tvcalendar.NewClient(clientOpts...)
-	handle := registerClient(client)
+	clientOpts = append(clientOpts, extraOpts...)
 
+	client := tvcalendar.NewClient(clientOpts...)
+	return registerClient(client)
+}
+
+func initClientFromJSON(goStr string) int64 {
+	return initClientWithCustomOptions(goStr)
+}
+
+func fetchWeekJSON(handle int64, timestamp int64) string {
+	client := getClient(handle)
+	if client == nil {
+		return `{"error": "client handle not found"}`
+	}
+
+	date := time.Unix(timestamp, 0).UTC()
+	events, err := client.FetchWeek(context.Background(), date)
+	if err != nil {
+		errMap := map[string]string{"error": err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	resJSON, err := json.Marshal(events)
+	if err != nil {
+		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	return string(resJSON)
+}
+
+func fetchRangeJSON(handle int64, startTS, endTS int64) string {
+	client := getClient(handle)
+	if client == nil {
+		return `{"error": "client handle not found"}`
+	}
+
+	start := time.Unix(startTS, 0).UTC()
+	end := time.Unix(endTS, 0).UTC()
+
+	events, err := client.FetchRange(context.Background(), start, end)
+	if err != nil {
+		errMap := map[string]string{"error": err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	resJSON, err := json.Marshal(events)
+	if err != nil {
+		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	return string(resJSON)
+}
+
+func fetchLiveFeedJSON(handle int64) string {
+	client := getClient(handle)
+	if client == nil {
+		return `{"error": "client handle not found"}`
+	}
+
+	events, err := client.FetchLiveFeed(context.Background())
+	if err != nil {
+		errMap := map[string]string{"error": err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	resJSON, err := json.Marshal(events)
+	if err != nil {
+		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
+		errJSON, _ := json.Marshal(errMap)
+		return string(errJSON)
+	}
+
+	return string(resJSON)
+}
+
+//export InitClient
+func InitClient(optsJSON *C.char) C.longlong {
+	var goStr string
+	if optsJSON != nil {
+		goStr = C.GoString(optsJSON)
+	}
+	handle := initClientFromJSON(goStr)
 	return C.longlong(handle)
 }
 
@@ -118,78 +200,20 @@ func FreeClient(handle C.longlong) {
 
 //export FetchWeekJSON
 func FetchWeekJSON(handle C.longlong, timestamp C.longlong) *C.char {
-	client := getClient(int64(handle))
-	if client == nil {
-		return C.CString(`{"error": "client handle not found"}`)
-	}
-
-	date := time.Unix(int64(timestamp), 0).UTC()
-	events, err := client.FetchWeek(context.Background(), date)
-	if err != nil {
-		errMap := map[string]string{"error": err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	resJSON, err := json.Marshal(events)
-	if err != nil {
-		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	return C.CString(string(resJSON))
+	resStr := fetchWeekJSON(int64(handle), int64(timestamp))
+	return C.CString(resStr)
 }
 
 //export FetchRangeJSON
 func FetchRangeJSON(handle C.longlong, startTS C.longlong, endTS C.longlong) *C.char {
-	client := getClient(int64(handle))
-	if client == nil {
-		return C.CString(`{"error": "client handle not found"}`)
-	}
-
-	start := time.Unix(int64(startTS), 0).UTC()
-	end := time.Unix(int64(endTS), 0).UTC()
-
-	events, err := client.FetchRange(context.Background(), start, end)
-	if err != nil {
-		errMap := map[string]string{"error": err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	resJSON, err := json.Marshal(events)
-	if err != nil {
-		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	return C.CString(string(resJSON))
+	resStr := fetchRangeJSON(int64(handle), int64(startTS), int64(endTS))
+	return C.CString(resStr)
 }
 
 //export FetchLiveFeedJSON
 func FetchLiveFeedJSON(handle C.longlong) *C.char {
-	client := getClient(int64(handle))
-	if client == nil {
-		return C.CString(`{"error": "client handle not found"}`)
-	}
-
-	events, err := client.FetchLiveFeed(context.Background())
-	if err != nil {
-		errMap := map[string]string{"error": err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	resJSON, err := json.Marshal(events)
-	if err != nil {
-		errMap := map[string]string{"error": "failed to marshal response: " + err.Error()}
-		errJSON, _ := json.Marshal(errMap)
-		return C.CString(string(errJSON))
-	}
-
-	return C.CString(string(resJSON))
+	resStr := fetchLiveFeedJSON(int64(handle))
+	return C.CString(resStr)
 }
 
 //export FreeString

@@ -235,6 +235,20 @@ func TestBridgeErrorHandling(t *testing.T) {
 	_ = b.Start(ctxLoop)
 }
 
+func TestBridgeWriteAtomicFilesDefaultDir(t *testing.T) {
+	b := NewBridge(BridgeConfig{
+		OutputDir: "",
+	})
+	payload := NewsFilterPayload{
+		LastUpdatedUTC: time.Now().UTC().Format("2006-01-02 15:04:05"),
+	}
+	defer os.Remove("ff_news_filter.json")
+	defer os.Remove("ff_news_filter.csv")
+	if err := b.writeAtomicFiles(payload); err != nil {
+		t.Errorf("writeAtomicFiles with empty OutputDir failed: %v", err)
+	}
+}
+
 func TestIsImpactEligible(t *testing.T) {
 	if !isImpactEligible(tvcalendar.ImpactHigh, tvcalendar.ImpactMedium) {
 		t.Errorf("Expected High impact to be eligible when target is Medium")

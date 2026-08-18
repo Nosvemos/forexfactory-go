@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -125,7 +126,7 @@ func TestServerHealthAndStatsAndCors(t *testing.T) {
 	}
 }
 
-func TestServerMockEndpoints(t *testing.T) {
+func TestServerMockEndpointsAndErrors(t *testing.T) {
 	mockJSON := `{
 		"status": "ok",
 		"result": [
@@ -188,6 +189,54 @@ func TestServerMockEndpoints(t *testing.T) {
 	handler.ServeHTTP(recLive, reqLive)
 	if recLive.Code != http.StatusOK {
 		t.Errorf("Expected status 200 for /api/v1/live, got %d", recLive.Code)
+	}
+
+	// 4. Test error branches with failing mock client
+	errMockClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("simulated network error")
+		}),
+	}
+	errSrv := &Server{
+		client:    tvcalendar.NewClient(tvcalendar.WithHTTPClient(errMockClient)),
+		startTime: time.Now(),
+	}
+	errMux := http.NewServeMux()
+	errMux.HandleFunc("/api/v1/calendar", errSrv.handleCalendar)
+	errMux.HandleFunc("/api/v1/live", errSrv.handleLive)
+	errHandler := errSrv.middleware(errMux)
+
+	reqCalErr := httptest.NewRequest("GET", "/api/v1/calendar?start=2025-01-01&end=2025-01-05", nil)
+	recCalErr := httptest.NewRecorder()
+	errHandler.ServeHTTP(recCalErr, reqCalErr)
+	if recCalErr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 error on failed calendar fetch, got %d", recCalErr.Code)
+	}
+
+	reqLiveErr := httptest.NewRequest("GET", "/api/v1/live", nil)
+	recLiveErr := httptest.NewRecorder()
+	errHandler.ServeHTTP(recLiveErr, reqLiveErr)
+	if recLiveErr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 error on failed live fetch, got %d", recLiveErr.Code)
+	}
+}
+
+func TestServerStartAndShutdown(t *testing.T) {
+	srv := NewServer(Config{
+		Addr: "127.0.0.1:0",
+	})
+
+	go func() {
+		_ = srv.Start()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		t.Errorf("Shutdown failed: %v", err)
 	}
 }
 

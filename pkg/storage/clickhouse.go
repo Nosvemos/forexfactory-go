@@ -83,6 +83,27 @@ func (c *ClickHouseStorage) Init(ctx context.Context) error {
 	return nil
 }
 
+// prepareClickHouseRecord maps an Event struct into ClickHouse columnar fields.
+func prepareClickHouseRecord(e tvcalendar.Event) (string, string, string, time.Time, string, string, string, string, uint8, uint8) {
+	eventID := e.ID
+	if eventID == "" {
+		hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+		h := sha256.Sum256([]byte(hashInput))
+		eventID = fmt.Sprintf("fallback-%x", h[:8])
+	}
+
+	allDayVal := uint8(0)
+	if e.IsAllDay {
+		allDayVal = 1
+	}
+	tentativeVal := uint8(0)
+	if e.IsTentative {
+		tentativeVal = 1
+	}
+
+	return eventID, e.Title, e.Currency, e.Date.UTC(), string(e.Impact), e.Forecast, e.Previous, e.Actual, allDayVal, tentativeVal
+}
+
 // SaveEvents executes a high-speed columnar batch insertion into ClickHouse.
 func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if c.conn == nil {
@@ -98,34 +119,8 @@ func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []tvcalendar.
 	}
 
 	for _, e := range events {
-		eventID := e.ID
-		if eventID == "" {
-			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
-			h := sha256.Sum256([]byte(hashInput))
-			eventID = fmt.Sprintf("fallback-%x", h[:8])
-		}
-
-		allDayVal := uint8(0)
-		if e.IsAllDay {
-			allDayVal = 1
-		}
-		tentativeVal := uint8(0)
-		if e.IsTentative {
-			tentativeVal = 1
-		}
-
-		err = batch.Append(
-			eventID,
-			e.Title,
-			e.Currency,
-			e.Date.UTC(),
-			string(e.Impact),
-			e.Forecast,
-			e.Previous,
-			e.Actual,
-			allDayVal,
-			tentativeVal,
-		)
+		id, title, curr, date, imp, forc, prev, act, allDay, tent := prepareClickHouseRecord(e)
+		err = batch.Append(id, title, curr, date, imp, forc, prev, act, allDay, tent)
 		if err != nil {
 			return fmt.Errorf("failed to append clickhouse batch record: %w", err)
 		}

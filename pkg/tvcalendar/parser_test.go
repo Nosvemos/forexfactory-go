@@ -77,6 +77,32 @@ func TestParseJSON(t *testing.T) {
 	}
 }
 
+func TestFormatNumeric(t *testing.T) {
+	if res := formatNumeric(nil, "%"); res != "" {
+		t.Errorf("Expected empty string for nil float, got %q", res)
+	}
+
+	val := 105.25
+	if res := formatNumeric(&val, "Index"); res != "105.25" {
+		t.Errorf("Expected '105.25' for unit 'Index', got %q", res)
+	}
+	if res := formatNumeric(&val, "points"); res != "105.25" {
+		t.Errorf("Expected '105.25' for unit 'points', got %q", res)
+	}
+	if res := formatNumeric(&val, "pts"); res != "105.25" {
+		t.Errorf("Expected '105.25' for unit 'pts', got %q", res)
+	}
+	if res := formatNumeric(&val, "%"); res != "105.25%" {
+		t.Errorf("Expected '105.25%%' for unit '%%', got %q", res)
+	}
+	if res := formatNumeric(&val, "K"); res != "105.25K" {
+		t.Errorf("Expected '105.25K' for unit 'K', got %q", res)
+	}
+	if res := formatNumeric(&val, ""); res != "105.25" {
+		t.Errorf("Expected '105.25' for empty unit, got %q", res)
+	}
+}
+
 func TestParseJSONEmpty(t *testing.T) {
 	_, err := ParseJSON([]byte(""), nil)
 	if err == nil {

@@ -265,63 +265,55 @@ func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Locat
 	return events
 }
 
-func executeDownload() {
-	startDate, err := time.Parse("2006-01-02", startFlag)
+// parseDatesAndLocation validates and parses the start date, end date, and timezone location.
+func parseDatesAndLocation(startStr, endStr, tzStr string) (time.Time, time.Time, *time.Location, error) {
+	startDate, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		log.Fatalf("Invalid start date %q: must be YYYY-MM-DD", startFlag)
+		return time.Time{}, time.Time{}, nil, fmt.Errorf("invalid start date %q: must be YYYY-MM-DD", startStr)
 	}
 
-	endDate, err := time.Parse("2006-01-02", endFlag)
+	endDate, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		log.Fatalf("Invalid end date %q: must be YYYY-MM-DD", endFlag)
+		return time.Time{}, time.Time{}, nil, fmt.Errorf("invalid end date %q: must be YYYY-MM-DD", endStr)
 	}
 
 	if startDate.After(endDate) {
-		log.Fatalf("Error: start date cannot be after end date")
+		return time.Time{}, time.Time{}, nil, fmt.Errorf("error: start date cannot be after end date")
 	}
 
 	var targetLoc *time.Location
-	if timezoneFlag != "" {
-		targetLoc, err = time.LoadLocation(timezoneFlag)
+	if tzStr != "" {
+		targetLoc, err = time.LoadLocation(tzStr)
 		if err != nil {
-			log.Fatalf("Failed to load timezone %q: %v", timezoneFlag, err)
+			return time.Time{}, time.Time{}, nil, fmt.Errorf("failed to load timezone %q: %w", tzStr, err)
 		}
 	}
 
-	filteredEvents := fetchEventsConcurrently(startDate, endDate, targetLoc)
+	return startDate, endDate, targetLoc, nil
+}
 
-	format := strings.ToLower(strings.TrimSpace(formatFlag))
+// exportEvents writes the given event slice to the target output format or destination.
+func exportEvents(format string, output string, events []tvcalendar.Event) error {
+	format = strings.ToLower(strings.TrimSpace(format))
 	if format == "parquet" {
-		if outputFlag == "" {
-			log.Fatalf("Error: --output file path is required when exporting to parquet format")
+		if output == "" {
+			return fmt.Errorf("error: --output file path is required when exporting to parquet format")
 		}
-		if err := tvcalendar.WriteParquet(outputFlag, filteredEvents); err != nil {
-			log.Fatalf("Error writing Parquet: %v", err)
-		}
-		if !silentFlag {
-			fmt.Fprintf(os.Stderr, "Successfully exported %d events to parquet.\n", len(filteredEvents))
-		}
-		return
+		return tvcalendar.WriteParquet(output, events)
 	}
 
 	if format == "xlsx" || format == "excel" {
-		if outputFlag == "" {
-			log.Fatalf("Error: --output file path is required when exporting to xlsx format")
+		if output == "" {
+			return fmt.Errorf("error: --output file path is required when exporting to xlsx format")
 		}
-		if err := tvcalendar.WriteExcel(filteredEvents, outputFlag); err != nil {
-			log.Fatalf("Error writing Excel: %v", err)
-		}
-		if !silentFlag {
-			fmt.Fprintf(os.Stderr, "Successfully exported %d events to Excel (.xlsx).\n", len(filteredEvents))
-		}
-		return
+		return tvcalendar.WriteExcel(events, output)
 	}
 
 	var out io.Writer = os.Stdout
-	if outputFlag != "" {
-		f, err := os.Create(outputFlag)
+	if output != "" {
+		f, err := os.Create(output)
 		if err != nil {
-			log.Fatalf("Failed to create output file %q: %v", outputFlag, err)
+			return fmt.Errorf("failed to create output file %q: %w", output, err)
 		}
 		defer f.Close()
 		out = f
@@ -329,20 +321,43 @@ func executeDownload() {
 
 	switch format {
 	case "csv":
-		if err := writeCSV(out, filteredEvents); err != nil {
-			log.Fatalf("Error writing CSV: %v", err)
-		}
+		return writeCSV(out, events)
 	case "json":
-		if err := writeJSON(out, filteredEvents); err != nil {
-			log.Fatalf("Error writing JSON: %v", err)
-		}
+		return writeJSON(out, events)
 	default:
-		log.Fatalf("Unknown output format %q: use 'json', 'csv', 'parquet', or 'xlsx'", formatFlag)
+		return fmt.Errorf("unknown output format %q: use 'json', 'csv', 'parquet', or 'xlsx'", format)
+	}
+}
+
+func executeDownload() {
+	startDate, endDate, targetLoc, err := parseDatesAndLocation(startFlag, endFlag, timezoneFlag)
+	if err != nil {
+		log.Fatalf("Parameter error: %v", err)
+	}
+
+	filteredEvents := fetchEventsConcurrently(startDate, endDate, targetLoc)
+
+	if err := exportEvents(formatFlag, outputFlag, filteredEvents); err != nil {
+		log.Fatalf("Export error: %v", err)
 	}
 
 	if !silentFlag {
 		fmt.Fprintf(os.Stderr, "Successfully exported %d events.\n", len(filteredEvents))
 	}
+}
+
+// createServerFromFlags builds a server instance configured with the current CLI flags.
+func createServerFromFlags() *server.Server {
+	addr := ":" + portFlag
+	if strings.Contains(portFlag, ":") {
+		addr = portFlag
+	}
+
+	return server.NewServer(server.Config{
+		Addr:        addr,
+		RateLimit:   rateLimitFlag,
+		Concurrency: concurrencyFlag,
+	})
 }
 
 func executeServe() {
@@ -363,18 +378,15 @@ func executeServe() {
 	fmt.Printf("\033[1;36m================================================================================\033[0m\n")
 	fmt.Println("Ready to serve requests... Press Ctrl+C to terminate.")
 
-	srv := server.NewServer(server.Config{
-		Addr:        addr,
-		RateLimit:   rateLimitFlag,
-		Concurrency: concurrencyFlag,
-	})
+	srv := createServerFromFlags()
 
 	if err := srv.Start(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
 }
 
-func executeBridge() {
+// executeBridgeWithContext starts the MT4/MT5 bridge with the given context.
+func executeBridgeWithContext(ctx context.Context) error {
 	var currs []string
 	if currenciesFlag != "" {
 		for _, c := range strings.Split(currenciesFlag, ",") {
@@ -414,32 +426,19 @@ func executeBridge() {
 		Currencies: currs,
 	})
 
-	if err := b.Start(context.Background()); err != nil && err != context.Canceled {
+	return b.Start(ctx)
+}
+
+func executeBridge() {
+	if err := executeBridgeWithContext(context.Background()); err != nil && err != context.Canceled {
 		log.Fatalf("Bridge error: %v", err)
 	}
 }
 
 func executeDbLoad() {
-	startDate, err := time.Parse("2006-01-02", startFlag)
+	startDate, endDate, targetLoc, err := parseDatesAndLocation(startFlag, endFlag, timezoneFlag)
 	if err != nil {
-		log.Fatalf("Invalid start date %q: must be YYYY-MM-DD", startFlag)
-	}
-
-	endDate, err := time.Parse("2006-01-02", endFlag)
-	if err != nil {
-		log.Fatalf("Invalid end date %q: must be YYYY-MM-DD", endFlag)
-	}
-
-	if startDate.After(endDate) {
-		log.Fatalf("Error: start date cannot be after end date")
-	}
-
-	var targetLoc *time.Location
-	if timezoneFlag != "" {
-		targetLoc, err = time.LoadLocation(timezoneFlag)
-		if err != nil {
-			log.Fatalf("Failed to load timezone %q: %v", timezoneFlag, err)
-		}
+		log.Fatalf("Parameter error: %v", err)
 	}
 
 	filteredEvents := fetchEventsConcurrently(startDate, endDate, targetLoc)
@@ -656,7 +655,8 @@ func writeCSV(w io.Writer, events []tvcalendar.Event) error {
 			return err
 		}
 	}
-	return nil
+	writer.Flush()
+	return writer.Error()
 }
 
 func writeJSON(w io.Writer, events []tvcalendar.Event) error {

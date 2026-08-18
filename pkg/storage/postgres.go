@@ -23,6 +23,33 @@ func NewPostgresStorage(connStr string) *PostgresStorage {
 	return &PostgresStorage{connStr: connStr}
 }
 
+// initSchema configures the postgres table schemas and indices.
+func (p *PostgresStorage) initSchema(ctx context.Context) error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS events (
+		id TEXT PRIMARY KEY,
+		title TEXT,
+		currency TEXT,
+		date TIMESTAMPTZ,
+		impact TEXT,
+		forecast TEXT,
+		previous TEXT,
+		actual TEXT,
+		all_day BOOLEAN,
+		tentative BOOLEAN
+	);
+	CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
+	CREATE INDEX IF NOT EXISTS idx_events_currency ON events(currency);
+	`
+
+	_, err := p.db.ExecContext(ctx, schema)
+	if err != nil {
+		return fmt.Errorf("failed to initialize postgres tables: %w", err)
+	}
+
+	return nil
+}
+
 // Init opens the database and configures the table schemas and indices.
 func (p *PostgresStorage) Init(ctx context.Context) error {
 	db, err := sql.Open("postgres", p.connStr)
@@ -41,29 +68,7 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to ping postgres database: %w", err)
 	}
 
-	schema := `
-	CREATE TABLE IF NOT EXISTS events (
-		id TEXT PRIMARY KEY,
-		title TEXT,
-		currency TEXT,
-		date TIMESTAMPTZ,
-		impact TEXT,
-		forecast TEXT,
-		previous TEXT,
-		actual TEXT,
-		all_day BOOLEAN,
-		tentative BOOLEAN
-	);
-	CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
-	CREATE INDEX IF NOT EXISTS idx_events_currency ON events(currency);
-	`
-
-	_, err = p.db.ExecContext(ctx, schema)
-	if err != nil {
-		return fmt.Errorf("failed to initialize postgres tables: %w", err)
-	}
-
-	return nil
+	return p.initSchema(ctx)
 }
 
 // SaveEvents bulk saves or updates calendar events inside PostgreSQL using a fast single transaction.

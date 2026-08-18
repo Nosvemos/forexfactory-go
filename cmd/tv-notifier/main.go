@@ -63,8 +63,13 @@ func main() {
 	}
 }
 
+// validateEndpointsConfigured checks if at least one alerting channel is set.
+func validateEndpointsConfigured() bool {
+	return discordWebhookFlag != "" || (telegramTokenFlag != "" && telegramChatFlag != "") || slackWebhookFlag != "" || genericWebhookFlag != ""
+}
+
 func executeNotifier() {
-	if discordWebhookFlag == "" && (telegramTokenFlag == "" || telegramChatFlag == "") && slackWebhookFlag == "" && genericWebhookFlag == "" {
+	if !validateEndpointsConfigured() {
 		log.Fatalf("Error: You must configure at least one notification endpoint (--discord-webhook, --telegram-token/chat, --slack-webhook, or --generic-webhook)")
 	}
 
@@ -214,21 +219,24 @@ func isImpactAllowed(imp tvcalendar.Impact, min tvcalendar.Impact) bool {
 	return weight(imp) >= weight(min)
 }
 
+// cleanCache prunes entries older than 1 hour from memory.
+func cleanCache(now time.Time) bool {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	changed := false
+	for key, releaseTime := range notifiedCache {
+		if now.Sub(releaseTime) > 1*time.Hour {
+			delete(notifiedCache, key)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func runCacheCleaner() {
 	ticker := time.NewTicker(2 * time.Hour)
 	for range ticker.C {
-		now := time.Now().UTC()
-		cacheMu.Lock()
-		changed := false
-		for key, releaseTime := range notifiedCache {
-			if now.Sub(releaseTime) > 1*time.Hour {
-				delete(notifiedCache, key)
-				changed = true
-			}
-		}
-		cacheMu.Unlock()
-
-		if changed {
+		if cleanCache(time.Now().UTC()) {
 			saveNotifiedCache()
 		}
 	}

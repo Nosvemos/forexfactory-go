@@ -3,6 +3,7 @@ package tvcalendar
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -121,6 +122,7 @@ func TestClientFetchHelpers(t *testing.T) {
 		WithUserAgent("CustomAgent/1.0"),
 		WithMaxRetries(2),
 		WithProxy("http://127.0.0.1:8080"),
+		WithRateLimit(100),
 		WithCountryFilter("US"),
 	)
 	defer client.Close()
@@ -159,6 +161,24 @@ func TestClientFetchHelpers(t *testing.T) {
 		t.Errorf("StreamLive error: %v", errStream)
 	case <-time.After(1 * time.Second):
 		t.Errorf("StreamLive timed out")
+	}
+
+	// 5. Test StreamLive error branch
+	errMockClient := newMockHTTPClient(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("simulated stream network error")
+	})
+	errClient := NewClient(WithHTTPClient(errMockClient))
+	defer errClient.Close()
+
+	errStreamCtx, errStreamCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer errStreamCancel()
+
+	_, streamErrChan := errClient.StreamLive(errStreamCtx, 50*time.Millisecond)
+	select {
+	case <-streamErrChan:
+		// Successfully received error
+	case <-time.After(1 * time.Second):
+		t.Errorf("StreamLive error channel timed out")
 	}
 }
 
@@ -308,5 +328,13 @@ func TestExcelAndParquetExport(t *testing.T) {
 
 	if err := WriteParquet(tempParquet, events); err != nil {
 		t.Fatalf("WriteParquet failed: %v", err)
+	}
+
+	// Test error paths
+	if err := WriteParquet("", events); err == nil {
+		t.Errorf("Expected WriteParquet to fail on empty path")
+	}
+	if err := WriteExcel(events, ""); err == nil {
+		t.Errorf("Expected WriteExcel to fail on empty path")
 	}
 }

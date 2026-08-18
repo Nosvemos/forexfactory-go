@@ -11,6 +11,8 @@ import (
 	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api/query"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 // InfluxDBStorage implements the Storage SDK interface for InfluxDB time-series databases.
@@ -52,6 +54,38 @@ func (i *InfluxDBStorage) Init(ctx context.Context) error {
 	return nil
 }
 
+// prepareInfluxPoint converts an Event into an InfluxDB write point.
+func prepareInfluxPoint(e tvcalendar.Event) *write.Point {
+	eventID := e.ID
+	if eventID == "" {
+		hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
+		h := sha256.Sum256([]byte(hashInput))
+		eventID = fmt.Sprintf("fallback-%x", h[:8])
+	}
+
+	tags := map[string]string{
+		"currency":     strings.ToUpper(e.Currency),
+		"impact":       string(e.Impact),
+		"is_all_day":   strconv.FormatBool(e.IsAllDay),
+		"is_tentative": strconv.FormatBool(e.IsTentative),
+	}
+
+	fields := map[string]interface{}{
+		"id":       eventID,
+		"title":    e.Title,
+		"forecast": e.Forecast,
+		"previous": e.Previous,
+		"actual":   e.Actual,
+	}
+
+	eventTime := e.Date
+	if eventTime.IsZero() {
+		eventTime = time.Now()
+	}
+
+	return influxdb2.NewPoint("economic_events", tags, fields, eventTime)
+}
+
 // SaveEvents writes calendar events as time-series metrics points into InfluxDB.
 func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if i.client == nil {
@@ -62,37 +96,7 @@ func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []tvcalendar.Ev
 	}
 
 	for _, e := range events {
-		eventID := e.ID
-		if eventID == "" {
-			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
-			h := sha256.Sum256([]byte(hashInput))
-			eventID = fmt.Sprintf("fallback-%x", h[:8])
-		}
-
-		// Tags: dimensions we want to group or query on
-		tags := map[string]string{
-			"currency":     strings.ToUpper(e.Currency),
-			"impact":       string(e.Impact),
-			"is_all_day":   strconv.FormatBool(e.IsAllDay),
-			"is_tentative": strconv.FormatBool(e.IsTentative),
-		}
-
-		// Fields: values associated with the timestamp
-		fields := map[string]interface{}{
-			"id":       eventID,
-			"title":    e.Title,
-			"forecast": e.Forecast,
-			"previous": e.Previous,
-			"actual":   e.Actual,
-		}
-
-		// Points must have non-empty time tags for correct time series plotting
-		eventTime := e.Date
-		if eventTime.IsZero() {
-			eventTime = time.Now()
-		}
-
-		p := influxdb2.NewPoint("economic_events", tags, fields, eventTime)
+		p := prepareInfluxPoint(e)
 		if err := i.writeAPI.WritePoint(ctx, p); err != nil {
 			return fmt.Errorf("failed to write influxdb point for %q: %w", e.Title, err)
 		}
@@ -192,6 +196,45 @@ func (i *InfluxDBStorage) Close() error {
 	return nil
 }
 
+// parseFluxRecord extracts a calendar Event from an InfluxDB FluxRecord.
+func parseFluxRecord(record *query.FluxRecord) tvcalendar.Event {
+	var e tvcalendar.Event
+
+	// Map tags safely
+	if curVal, ok := record.ValueByKey("currency").(string); ok {
+		e.Currency = curVal
+	}
+	if impVal, ok := record.ValueByKey("impact").(string); ok {
+		e.Impact = tvcalendar.Impact(impVal)
+	}
+
+	allDayStr, _ := record.ValueByKey("is_all_day").(string)
+	e.IsAllDay = allDayStr == "true"
+
+	tentativeStr, _ := record.ValueByKey("is_tentative").(string)
+	e.IsTentative = tentativeStr == "true"
+
+	// Map pivoted field values
+	if idVal, ok := record.ValueByKey("id").(string); ok {
+		e.ID = idVal
+	}
+	if titleVal, ok := record.ValueByKey("title").(string); ok {
+		e.Title = titleVal
+	}
+	if forecastVal, ok := record.ValueByKey("forecast").(string); ok {
+		e.Forecast = forecastVal
+	}
+	if previousVal, ok := record.ValueByKey("previous").(string); ok {
+		e.Previous = previousVal
+	}
+	if actualVal, ok := record.ValueByKey("actual").(string); ok {
+		e.Actual = actualVal
+	}
+
+	e.Date = record.Time()
+	return e
+}
+
 // executeFluxQuery executes the Flux statement and parses result points back into standard Event lists.
 func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string) ([]tvcalendar.Event, error) {
 	if i.client == nil {
@@ -207,47 +250,11 @@ func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string
 	var events []tvcalendar.Event
 
 	for result.Next() {
-		record := result.Record()
-
-		var e tvcalendar.Event
-
-		// Map tags safely
-		if curVal, ok := record.ValueByKey("currency").(string); ok {
-			e.Currency = curVal
-		}
-		if impVal, ok := record.ValueByKey("impact").(string); ok {
-			e.Impact = tvcalendar.Impact(impVal)
-		}
-
-		allDayStr, _ := record.ValueByKey("is_all_day").(string)
-		e.IsAllDay = allDayStr == "true"
-
-		tentativeStr, _ := record.ValueByKey("is_tentative").(string)
-		e.IsTentative = tentativeStr == "true"
-
-		// Map pivoted field values
-		if idVal, ok := record.ValueByKey("id").(string); ok {
-			e.ID = idVal
-		}
-		if titleVal, ok := record.ValueByKey("title").(string); ok {
-			e.Title = titleVal
-		}
-		if forecastVal, ok := record.ValueByKey("forecast").(string); ok {
-			e.Forecast = forecastVal
-		}
-		if previousVal, ok := record.ValueByKey("previous").(string); ok {
-			e.Previous = previousVal
-		}
-		if actualVal, ok := record.ValueByKey("actual").(string); ok {
-			e.Actual = actualVal
-		}
-
-		e.Date = record.Time()
-		events = append(events, e)
+		events = append(events, parseFluxRecord(result.Record()))
 	}
 
 	if err := result.Err(); err != nil {
-		return nil, fmt.Errorf("error during influxdb query result parsing: %w", err)
+		return nil, fmt.Errorf("error reading influxdb records: %w", err)
 	}
 
 	return events, nil
