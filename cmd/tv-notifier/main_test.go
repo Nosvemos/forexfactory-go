@@ -106,6 +106,9 @@ func TestWebhooksDispatchAllImpactsAndErrors(t *testing.T) {
 		tvcalendar.ImpactNone,
 	}
 
+	oldTransport := webhookHTTPClient.Transport
+	defer func() { webhookHTTPClient.Transport = oldTransport }()
+
 	for _, imp := range impacts {
 		event := tvcalendar.Event{
 			ID:       "999",
@@ -117,35 +120,72 @@ func TestWebhooksDispatchAllImpactsAndErrors(t *testing.T) {
 			Previous: "5.25%",
 		}
 
-		// Success calls
-		discordWebhookFlag = tsSuccess.URL
-		_ = sendDiscordAlert(event, 10)
+		// 1. Success calls with 200 OK
+		webhookHTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Body:       io.NopCloser(bytes.NewBufferString(`{"ok":true}`)),
+				Header:     make(http.Header),
+			}, nil
+		})
 
-		slackWebhookFlag = tsSuccess.URL
-		_ = sendSlackAlert(event, 10)
+		discordWebhookFlag = "https://discord.com/api/webhooks/dummy"
+		if err := sendDiscordAlert(event, 10); err != nil {
+			t.Errorf("Unexpected error from Discord: %v", err)
+		}
 
-		genericWebhookFlag = tsSuccess.URL
-		_ = sendGenericWebhookAlert(event, 10)
+		slackWebhookFlag = "https://hooks.slack.com/services/dummy"
+		if err := sendSlackAlert(event, 10); err != nil {
+			t.Errorf("Unexpected error from Slack: %v", err)
+		}
+
+		genericWebhookFlag = "https://example.com/webhook"
+		if err := sendGenericWebhookAlert(event, 10); err != nil {
+			t.Errorf("Unexpected error from generic webhook: %v", err)
+		}
 
 		telegramTokenFlag = "dummy"
 		telegramChatFlag = "123"
-		_ = sendTelegramAlert(event, 10)
+		if err := sendTelegramAlert(event, 10); err != nil {
+			t.Errorf("Unexpected error from Telegram: %v", err)
+		}
 
-		// Error calls
-		discordWebhookFlag = tsError.URL
+		// 2. Error calls with 500
+		webhookHTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Status:     "500 Internal Server Error",
+				Body:       io.NopCloser(bytes.NewBufferString("error")),
+				Header:     make(http.Header),
+			}, nil
+		})
+
 		if err := sendDiscordAlert(event, 10); err == nil {
 			t.Errorf("Expected error on 500 status from Discord")
 		}
 
-		slackWebhookFlag = tsError.URL
 		if err := sendSlackAlert(event, 10); err == nil {
 			t.Errorf("Expected error on 500 status from Slack")
 		}
 
-		genericWebhookFlag = tsError.URL
 		if err := sendGenericWebhookAlert(event, 10); err == nil {
 			t.Errorf("Expected error on 500 status from generic webhook")
 		}
+
+		if err := sendTelegramAlert(event, 10); err == nil {
+			t.Errorf("Expected error on 500 status from Telegram")
+		}
+
+		// 3. Network connection errors
+		webhookHTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, io.ErrClosedPipe
+		})
+
+		_ = sendDiscordAlert(event, 10)
+		_ = sendSlackAlert(event, 10)
+		_ = sendGenericWebhookAlert(event, 10)
+		_ = sendTelegramAlert(event, 10)
 	}
 
 	// Test helpers

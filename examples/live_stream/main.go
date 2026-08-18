@@ -9,23 +9,33 @@ import (
 	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
-func main() {
-	client := tvcalendar.NewClient(
-		tvcalendar.WithTimeLocation(time.UTC),
-	)
-
+func runLiveStream(ctx context.Context, client *tvcalendar.Client, interval time.Duration) {
 	fmt.Println("Starting real-time economic calendar tracker (Press Ctrl+C to exit)...")
 	fmt.Println("--------------------------------------------------------------------------------")
 
 	updateLiveFeed(client)
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		fmt.Printf("\n[%s] Checking for economic feed updates...\n", time.Now().Format("15:04:05"))
-		updateLiveFeed(client)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fmt.Printf("\n[%s] Checking for economic feed updates...\n", time.Now().Format("15:04:05"))
+			updateLiveFeed(client)
+		}
 	}
+}
+
+func main() {
+	client := tvcalendar.NewClient(
+		tvcalendar.WithTimeLocation(time.UTC),
+	)
+	defer client.Close()
+
+	runLiveStream(context.Background(), client, 30*time.Second)
 }
 
 func updateLiveFeed(client *tvcalendar.Client) {

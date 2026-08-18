@@ -14,7 +14,32 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestSimpleExample(t *testing.T) {
-	mockJSON := `{"status":"ok","result":[{"id":"1","title":"CPI","country":"US","currency":"USD","importance":1,"date":"2025-01-15T13:30:00Z"}]}`
+	mockJSON := `{
+		"status": "ok",
+		"result": [
+			{
+				"id": "1",
+				"title": "CPI",
+				"country": "US",
+				"currency": "USD",
+				"actual": 2.5,
+				"forecast": 2.4,
+				"previous": 2.3,
+				"importance": 1,
+				"date": "2025-01-15T13:30:00Z"
+			},
+			{
+				"id": "2",
+				"title": "Holiday",
+				"country": "US",
+				"currency": "USD",
+				"all_day": true,
+				"importance": -1,
+				"date": "2025-01-15T00:00:00Z"
+			}
+		]
+	}`
+
 	http.DefaultClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
