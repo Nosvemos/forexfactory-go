@@ -315,7 +315,9 @@ func exportEvents(format string, output string, events []tvcalendar.Event) error
 		if err != nil {
 			return fmt.Errorf("failed to create output file %q: %w", output, err)
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		out = f
 	}
 

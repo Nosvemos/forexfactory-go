@@ -43,13 +43,17 @@ func WriteParquet(filePath string, events []Event) error {
 	if err != nil {
 		return fmt.Errorf("failed to create local file writer for path %q: %w", filePath, err)
 	}
-	defer fw.Close()
+	defer func() {
+		_ = fw.Close()
+	}()
 
 	pw, err := writer.NewParquetWriter(fw, new(ParquetEvent), 4)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
-	defer pw.WriteStop()
+	defer func() {
+		_ = pw.WriteStop()
+	}()
 
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	pw.RowGroupSize = 128 * 1024 * 1024 // 128MB
