@@ -7,7 +7,7 @@
     <a href="https://pkg.go.dev/github.com/Nosvemos/tradingview-calendar-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/tradingview-calendar-go.svg" alt="Go Reference"></a>
     <a href="https://github.com/Nosvemos/tradingview-calendar-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/tradingview-calendar-go" alt="Latest release"></a>
     <img src="https://img.shields.io/badge/go-1.22+-00ADD8.svg" alt="Go version">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+    <img src="https://img.shields.io/badge/license-Non--Commercial%20Source--Available-red.svg" alt="License">
   </p>
 </div>
 
@@ -215,4 +215,7 @@ _ = store.SaveEvents(context.Background(), events)
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Non-Commercial Source-Available License (NCSA 1.0)** - see the [LICENSE](LICENSE) file for details.
+
+- ✅ **Allowed:** Source code inspection, personal non-commercial use, educational research, local modifications, and free non-commercial redistribution.
+- ❌ **Prohibited:** Commercial use, resale, paid distribution, SaaS/cloud hosting, sublicensing, or bundling into commercial trading products/EAs without express written authorization.

@@ -1,21 +1,39 @@
-MIT License
+NON-COMMERCIAL SOURCE-AVAILABLE LICENSE (NCSA License)
 
-Copyright (c) 2026 Nosvemos
+Version 1.0, 2026
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2026 Nosvemos. All rights reserved.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+TERMS AND CONDITIONS FOR ACCESS, USE, MODIFICATION, AND REDISTRIBUTION
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1. DEFINITIONS
+   "Software" refers to the source code, documentation, binaries, and related files distributed under this License.
+   "Commercial Use" means any use, execution, deployment, reproduction, distribution, or integration of the Software, in whole or in part, that is intended for or directed toward commercial advantage, monetary compensation, revenue generation, business operations, or incorporation into commercial products or paid services.
+   "Non-Commercial Use" means personal, educational, academic, non-profit research, or private experimentation purposes that do not involve any direct or indirect monetary gain or commercial exploitation.
+   "Modifications" means any alterations, translations, enhancements, additions, or derivative works based on the Software.
+
+2. GRANT OF RIGHTS (PERMITTED USES)
+   Subject to the terms and restrictions of this License, the Copyright Holder hereby grants you a personal, non-exclusive, non-transferable, royalty-free license to:
+   a. View, inspect, study, and examine the source code of the Software.
+   b. Execute and run the Software solely for personal, private, educational, or non-commercial testing and research purposes.
+   c. Modify, adapt, or create derivative works based upon the Software strictly for your own personal and non-commercial purposes.
+   d. Redistribute verbatim or modified copies of the Software, strictly free of charge and solely for non-commercial purposes, provided that:
+      i. All copies retain this complete License document and all original copyright, author, and disclaimer notices.
+      ii. Any modified files carry prominent notices stating that you changed the files and the date of any modification.
+
+3. RESTRICTIONS AND PROHIBITIONS (STRICTLY FORBIDDEN)
+   You may NOT, under any circumstances:
+   a. Commercial Exploitation: Use the Software, or any derivative work thereof, for any Commercial Use, business operation, commercial trading firm, hedge fund, proprietary trading desk, or enterprise production environment without prior written authorization from the Copyright Holder.
+   b. Resale and Paid Distribution: Sell, lease, rent, license, sublicense, assign, charge access fees, monetize, or distribute the Software or its derivatives in exchange for money, cryptocurrency, subscriptions, donations, or any valuable consideration.
+   c. SaaS and Hosting Services: Deploy, host, or make available the Software or its API, endpoints, WebSocket feeds, SSE streams, or database bridges as a Software-as-a-Service (SaaS), Platform-as-a-Service (PaaS), hosted cloud service, paid notification service, or remote API for third parties.
+   d. Integration in Commercial Products: Bundle, link, embed, or integrate the Software (or any portion or derivative work thereof) into any commercial software, proprietary platform, commercial Expert Advisor (EA), indicator, or closed-source paid application.
+   e. Sublicensing: Grant sublicenses, transfer rights, or permit third parties to bypass the restrictions established in this License.
+
+4. RESERVATION OF RIGHTS & TRADEMARKS
+   All rights not expressly granted under this License are reserved by the Copyright Holder. This License does not grant any rights to use the trademarks, service marks, logos, or trade names of the Copyright Holder or TradingView.
+
+5. TERMINATION
+   This License and all rights granted hereunder shall automatically terminate with immediate effect if you fail to comply with any of the terms or restrictions stated herein. Upon termination, you must cease all use, execution, and distribution of the Software and permanently delete all copies in your possession or control.
+
+6. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, ACCURACY, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, LOSS OF CAPITAL, FINANCIAL LOSSES, TRADING LOSSES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
