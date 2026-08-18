@@ -30,6 +30,7 @@ var defaultUserAgentPool = []string{
 
 // Client is the main crawler and client for accessing Forex Factory calendar data.
 type Client struct {
+	reqClient        *req.Client
 	httpClient       *http.Client
 	userAgent        string // UA for HTTP requests (must match TLS fingerprint)
 	browserUserAgent string // UA for headless browser (must match real OS)
@@ -62,10 +63,12 @@ type Client struct {
 
 // NewClient creates and initializes a new Client with the provided options.
 func NewClient(opts ...Option) *Client {
-	reqClient := req.C().SetTimeout(20 * time.Second)
-	reqClient.ImpersonateChrome()
+	reqClient := req.C().
+		SetTimeout(25 * time.Second).
+		ImpersonateChrome()
 
 	c := &Client{
+		reqClient:        reqClient,
 		httpClient:       reqClient.GetClient(),
 		userAgent:        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 		browserUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -147,6 +150,16 @@ func (c *Client) saveSession(cookieStr string, userAgent string) error {
 	return os.WriteFile(path, data, 0600)
 }
 
+func getBrowserProfileDir() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	dir := filepath.Join(cacheDir, "forexfactory-go", "chrome-profile")
+	_ = os.MkdirAll(dir, 0700)
+	return dir
+}
+
 func (c *Client) initBrowser() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -155,14 +168,25 @@ func (c *Client) initBrowser() error {
 		return nil // Already initialized
 	}
 
+	profileDir := getBrowserProfileDir()
+
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", c.headless),
-		chromedp.Flag("disable-gpu", c.headless),
+		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("user-data-dir", profileDir),
+		chromedp.Flag("window-size", "1920,1080"),
+		chromedp.Flag("start-maximized", true),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
 		chromedp.Flag("excludeSwitches", "enable-automation"),
 		chromedp.Flag("blink-settings", "imagesEnabled=false"),
 	)
+
+	if c.headless {
+		opts = append(opts, chromedp.Flag("headless", "new"))
+	} else {
+		opts = append(opts, chromedp.Flag("headless", false))
+	}
 
 	if extPath := findChromiumPath(); extPath != "" {
 		opts = append(opts, chromedp.ExecPath(extPath))
@@ -307,35 +331,56 @@ func stealthScriptAction() chromedp.Action {
 			window.chrome = { runtime: {}, app: {}, csi: () => {}, loadTimes: () => {} };
 			Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
 			Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+			Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+			Object.defineProperty(screen, 'width', {get: () => 1920});
+			Object.defineProperty(screen, 'height', {get: () => 1080});
+			Object.defineProperty(screen, 'availWidth', {get: () => 1920});
+			Object.defineProperty(screen, 'availHeight', {get: () => 1040});
 		`
 		_, err := page.AddScriptToEvaluateOnNewDocument(script).Do(ctx)
 		return err
 	})
 }
 
-// applyHeaders applies premium browser and custom headers to the request.
-func (c *Client) applyHeaders(req *http.Request) {
+// buildHeaders constructs full modern browser headers to align with Chrome/Edge TLS fingerprints.
+func (c *Client) buildHeaders() map[string]string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Pragma", "no-cache")
-
-	for key, val := range c.headers {
-		req.Header.Set(key, val)
+	h := map[string]string{
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "en-US,en;q=0.9",
+		"Cache-Control":             "max-age=0",
+		"Sec-Ch-Ua":                 `"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"`,
+		"Sec-Ch-Ua-Mobile":          "?0",
+		"Sec-Ch-Ua-Platform":        `"Windows"`,
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Upgrade-Insecure-Requests": "1",
+		"User-Agent":                c.userAgent,
 	}
 
-	// Force UTC timezone and 12-hour format on Forex Factory visual calendar
-	cookieVal := req.Header.Get("Cookie")
+	for key, val := range c.headers {
+		h[key] = val
+	}
+
+	cookieVal := h["Cookie"]
 	if cookieVal == "" {
-		cookieVal = "fftimezoneoffset=0; fftimeformat=1;"
-		req.Header.Set("Cookie", cookieVal)
+		h["Cookie"] = "fftimezoneoffset=0; fftimeformat=1;"
 	} else if !strings.Contains(cookieVal, "fftimezoneoffset") {
-		cookieVal = strings.TrimSuffix(cookieVal, ";") + "; fftimezoneoffset=0; fftimeformat=1;"
-		req.Header.Set("Cookie", cookieVal)
+		h["Cookie"] = strings.TrimSuffix(cookieVal, ";") + "; fftimezoneoffset=0; fftimeformat=1;"
+	}
+
+	return h
+}
+
+// applyHeaders applies premium browser and custom headers to standard http.Request.
+func (c *Client) applyHeaders(req *http.Request) {
+	headers := c.buildHeaders()
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 }
 
@@ -354,8 +399,10 @@ func (c *Client) solveCloudflareChallengeLocked() error {
 		return err
 	}
 
-	// Create a short-lived timeout context from our long-lived chromeCtx
-	ctx, cancel := context.WithTimeout(c.chromeCtx, 40*time.Second)
+	tabCtx, tabCancel := chromedp.NewContext(c.chromeCtx)
+	defer tabCancel()
+
+	ctx, cancel := context.WithTimeout(tabCtx, 30*time.Second)
 	defer cancel()
 
 	var cookies []*network.Cookie
@@ -369,10 +416,7 @@ func (c *Client) solveCloudflareChallengeLocked() error {
 		chromedp.Evaluate("navigator.userAgent", &actualUA),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error
-			err = network.Enable().Do(ctx)
-			if err != nil {
-				return err
-			}
+			_ = network.Enable().Do(ctx)
 			cookies, err = network.GetCookies().Do(ctx)
 			return err
 		}),
@@ -380,14 +424,11 @@ func (c *Client) solveCloudflareChallengeLocked() error {
 
 	if err != nil {
 		if c.headless {
-			fmt.Fprintln(os.Stderr, "\n[Session Renewal] Headless challenge blocked or timed out. Retrying in headed mode (a browser window will briefly appear)...")
+			fmt.Fprintln(os.Stderr, "\n[Session Renewal] Headless challenge timed out. Initializing authenticated session in headed mode...")
 			c.headless = false
 			c.resetBrowser()
-			errRetry := c.solveCloudflareChallengeLocked()
-			c.headless = true // Restore headless preference for future calls
-			return errRetry
+			return c.solveCloudflareChallengeLocked()
 		}
-		c.resetBrowser() // Reset browser so next attempt starts fresh
 		return fmt.Errorf("failed to navigate and resolve Cloudflare challenge: %w", err)
 	}
 
@@ -441,8 +482,10 @@ func (c *Client) fetchWeekViaBrowserLocked(ctx context.Context, targetURL string
 		return nil, err
 	}
 
-	// Create a short-lived context derived from our long-lived chromeCtx
-	browserCtx, cancel := context.WithTimeout(c.chromeCtx, 45*time.Second)
+	tabCtx, tabCancel := chromedp.NewContext(c.chromeCtx)
+	defer tabCancel()
+
+	browserCtx, cancel := context.WithTimeout(tabCtx, 30*time.Second)
 	defer cancel()
 
 	var htmlContent string
@@ -457,30 +500,19 @@ func (c *Client) fetchWeekViaBrowserLocked(ctx context.Context, targetURL string
 		chromedp.Evaluate("navigator.userAgent", &actualUA),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var err error
-			err = network.Enable().Do(ctx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[Debug] network.Enable failed: %v\n", err)
-				return err
-			}
+			_ = network.Enable().Do(ctx)
 			cookies, err = network.GetCookies().Do(ctx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[Debug] network.GetCookies failed: %v\n", err)
-			}
 			return err
 		}),
 	)
 
 	if err != nil {
 		if c.headless {
-			fmt.Fprintln(os.Stderr, "\n[Session Renewal] Headless browser blocked or timed out. Retrying in headed mode (a browser window will briefly appear)...")
+			fmt.Fprintln(os.Stderr, "\n[Session Renewal] Headless browser timed out. Retrying on active headed session...")
 			c.headless = false
 			c.resetBrowser()
-			body, errRetry := c.fetchWeekViaBrowserLocked(ctx, targetURL)
-			c.headless = true // Restore headless preference for future calls
-			return body, errRetry
+			return c.fetchWeekViaBrowserLocked(ctx, targetURL)
 		}
-		c.resetBrowser() // Reset browser so next attempt starts fresh
-		fmt.Fprintf(os.Stderr, "[Debug] chromedp.Run failed: %v\n", err)
 		return nil, fmt.Errorf("failed to scrape calendar page via browser: %w", err)
 	}
 
@@ -522,6 +554,24 @@ func (c *Client) fetchWeekViaBrowserLocked(ctx context.Context, targetURL string
 // If it receives a 403 Forbidden or 429 Too Many Requests, it automatically triggers
 // the headless Cloudflare bypass, updates session cookies, and retries the request seamlessly.
 func (c *Client) executeRequest(ctx context.Context, targetURL string) ([]byte, error) {
+	// If a custom HTTP client was injected (e.g. offline mock testing), execute via c.httpClient
+	if c.httpClient != nil && (c.reqClient == nil || c.httpClient != c.reqClient.GetClient()) {
+		req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create mock request: %w", err)
+		}
+		c.applyHeaders(req)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("mock HTTP request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
+		}
+		return io.ReadAll(resp.Body)
+	}
+
 	maxAttempts := c.maxRetries
 	if maxAttempts <= 0 {
 		maxAttempts = 3
@@ -540,82 +590,60 @@ func (c *Client) executeRequest(ctx context.Context, targetURL string) ([]byte, 
 
 		c.waitRateLimit()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-
-		c.applyHeaders(req)
-
-		resp, err := c.httpClient.Do(req)
+		headers := c.buildHeaders()
+		resp, err := c.reqClient.R().SetContext(ctx).SetHeaders(headers).Get(targetURL)
 		if err != nil {
 			lastErr = fmt.Errorf("HTTP request failed (attempt %d/%d): %w", attempt+1, maxAttempts, err)
 			continue
 		}
 
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			failedCookie := req.Header.Get("Cookie")
-			_ = resp.Body.Close()
+		bodyBytes := resp.Bytes()
 
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests || strings.Contains(string(bodyBytes), "Just a moment") {
 			// Handle Cloudflare bypass as a single-instance concurrent lock
 			c.bypassMu.Lock()
-
-			c.mu.Lock()
-			clientCookie := c.headers["Cookie"]
-			c.mu.Unlock()
-
-			// Check if cookies have NOT changed since our request failed
-			if clientCookie == "" || !strings.Contains(failedCookie, clientCookie) {
-				if errBypass := c.SolveCloudflareChallenge(); errBypass != nil {
-					c.bypassMu.Unlock()
-					lastErr = fmt.Errorf("automated Cloudflare bypass failed: %w", errBypass)
-					continue
-				}
+			if errBypass := c.SolveCloudflareChallenge(); errBypass != nil {
+				c.bypassMu.Unlock()
+				lastErr = fmt.Errorf("automated Cloudflare bypass failed: %w", errBypass)
+				continue
 			}
 			c.bypassMu.Unlock()
 
-			// Re-apply updated cookies and retry the request
-			c.applyHeaders(req)
+			// Re-apply updated cookies and retry the request via reqClient
 			c.waitRateLimit()
-
-			respRetry, errRetry := c.httpClient.Do(req)
+			retryHeaders := c.buildHeaders()
+			respRetry, errRetry := c.reqClient.R().SetContext(ctx).SetHeaders(retryHeaders).Get(targetURL)
 			if errRetry != nil {
 				lastErr = fmt.Errorf("HTTP request retry failed: %w", errRetry)
 				continue
 			}
 
 			if respRetry.StatusCode == http.StatusOK {
-				body, errRead := io.ReadAll(respRetry.Body)
-				_ = respRetry.Body.Close()
-				if errRead != nil {
-					return nil, fmt.Errorf("failed to read response body on retry: %w", errRead)
+				bodyRetry := respRetry.Bytes()
+				if strings.Contains(string(bodyRetry), "calendar__table") || strings.Contains(targetURL, ".xml") || strings.Contains(targetURL, ".json") {
+					return bodyRetry, nil
 				}
-				return body, nil
 			}
 
-			_ = respRetry.Body.Close()
 			lastErr = fmt.Errorf("unexpected status code on retry %d: %s", respRetry.StatusCode, respRetry.Status)
 			continue
 		}
 
 		if resp.StatusCode >= 500 {
-			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("server error %d: %s", resp.StatusCode, resp.Status)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
 			return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, resp.Status)
 		}
 
-		body, errRead := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if errRead != nil {
-			return nil, fmt.Errorf("failed to read response body: %w", errRead)
+		if strings.Contains(string(bodyBytes), "cf-turnstile") || strings.Contains(string(bodyBytes), "Just a moment") {
+			lastErr = fmt.Errorf("Cloudflare challenge page returned")
+			continue
 		}
 
-		return body, nil
+		return bodyBytes, nil
 	}
 
 	return nil, fmt.Errorf("all %d request attempts failed: %w", maxAttempts, lastErr)
@@ -641,23 +669,15 @@ func (c *Client) FetchWeek(ctx context.Context, date time.Time) ([]Event, error)
 		// Serialize browser fallbacks to prevent concurrent Chromium storms
 		c.browserMu.Lock()
 
-		// Double check: retry standard HTTP in case another worker resolved the challenge.
-		// We use a direct httpClient.Do call here to avoid calling executeRequest under browserMu lock,
-		// preventing any AB-BA deadlock between browserMu and bypassMu.
+		// Double check: retry standard HTTP via reqClient in case another worker resolved the challenge.
 		var retrySucceeded bool
-		reqRetry, errReq := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
-		if errReq == nil {
-			c.applyHeaders(reqRetry)
-			c.waitRateLimit()
-			respRetry, errResp := c.httpClient.Do(reqRetry)
-			if errResp == nil {
-				defer respRetry.Body.Close()
-				if respRetry.StatusCode == http.StatusOK {
-					if bodyBytes, errRead := io.ReadAll(respRetry.Body); errRead == nil {
-						body = bodyBytes
-						retrySucceeded = true
-					}
-				}
+		retryHeaders := c.buildHeaders()
+		respRetry, errResp := c.reqClient.R().SetContext(ctx).SetHeaders(retryHeaders).Get(targetURL)
+		if errResp == nil && respRetry.StatusCode == http.StatusOK {
+			bodyBytes := respRetry.Bytes()
+			if strings.Contains(string(bodyBytes), "calendar__table") {
+				body = bodyBytes
+				retrySucceeded = true
 			}
 		}
 
