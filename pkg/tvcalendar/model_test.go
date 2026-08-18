@@ -27,6 +27,8 @@ func TestParseFloat(t *testing.T) {
 		{"-", 0, true},
 		{"--", 0, true},
 		{"N/A", 0, true},
+		{"none", 0, true},
+		{"null", 0, true},
 	}
 
 	for _, tt := range tests {
@@ -63,6 +65,44 @@ func TestEventDeviationAndSurpriseAndBias(t *testing.T) {
 		t.Errorf("MarketBias() = %q, want 'Bullish'", bias)
 	}
 
+	// Test zero forecast surprise
+	zeroForecastEvent := Event{
+		Title:    "Trade Balance",
+		Actual:   "1.5B",
+		Forecast: "0B",
+	}
+	zeroSurp, err := zeroForecastEvent.Surprise()
+	if err != nil || zeroSurp != 1500000000.0 {
+		t.Errorf("Surprise() for zero forecast = %v, want 1.5B", zeroSurp)
+	}
+
+	// Test negative forecast surprise
+	negForecastEvent := Event{
+		Title:    "Current Account",
+		Actual:   "-2.0B",
+		Forecast: "-4.0B",
+	}
+	negSurp, err := negForecastEvent.Surprise()
+	if err != nil || negSurp != 50.0 {
+		t.Errorf("Surprise() for negative forecast = %v, want 50.0", negSurp)
+	}
+
+	// Test invalid parsing error
+	invalidEvent := Event{
+		Title:    "Invalid",
+		Actual:   "N/A",
+		Forecast: "3.0%",
+	}
+	if _, err := invalidEvent.Deviation(); err == nil {
+		t.Errorf("Expected Deviation error on invalid actual")
+	}
+	if _, err := invalidEvent.Surprise(); err == nil {
+		t.Errorf("Expected Surprise error on invalid actual")
+	}
+	if bias := invalidEvent.MarketBias(); bias != "Neutral" {
+		t.Errorf("Expected Neutral market bias on unparseable values, got %s", bias)
+	}
+
 	unemp := Event{
 		Title:    "Unemployment Rate",
 		Actual:   "4.2%",
@@ -71,6 +111,15 @@ func TestEventDeviationAndSurpriseAndBias(t *testing.T) {
 	}
 	if bias := unemp.MarketBias(); bias != "Bearish" {
 		t.Errorf("MarketBias(unemployment) = %q, want 'Bearish'", bias)
+	}
+	unempGood := Event{
+		Title:    "Initial Jobless Claims",
+		Actual:   "200K",
+		Forecast: "220K",
+		Previous: "230K",
+	}
+	if bias := unempGood.MarketBias(); bias != "Bullish" {
+		t.Errorf("MarketBias(jobless claims lower) = %q, want 'Bullish'", bias)
 	}
 }
 

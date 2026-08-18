@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
+	"github.com/gorilla/websocket"
 )
 
 // Config holds configuration for the HTTP API server.
@@ -22,7 +23,15 @@ type Config struct {
 	Concurrency int
 }
 
-// Server provides a high-performance REST API and SSE streaming microservice for global economic calendar data.
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for API consumers
+	},
+}
+
+// Server provides a high-performance REST API, SSE stream, and WebSocket microservice for global economic calendar data.
 type Server struct {
 	client     *tvcalendar.Client
 	server     *http.Server
@@ -33,6 +42,10 @@ type Server struct {
 	// SSE clients registry
 	sseMu      sync.Mutex
 	sseClients map[chan []byte]bool
+
+	// WebSocket clients registry
+	wsMu      sync.Mutex
+	wsClients map[*websocket.Conn]bool
 }
 
 // NewServer creates a new API server instance.
@@ -53,17 +66,19 @@ func NewServer(cfg Config) *Server {
 		client:     tvcalendar.NewClient(clientOpts...),
 		startTime:  time.Now(),
 		sseClients: make(map[chan []byte]bool),
+		wsClients:  make(map[*websocket.Conn]bool),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/v1/calendar", s.handleCalendar)
 	mux.HandleFunc("/api/v1/events", s.handleCalendar) // Route alias
 	mux.HandleFunc("/api/v1/live", s.handleLive)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
+	mux.HandleFunc("/api/v1/ws", s.handleWebSocket)
 	mux.HandleFunc("/api/v1/stats", s.handleStats)
 
-	// Wrap mux with CORS, Security headers, and Metrics
 	handler := s.middleware(mux)
 
 	s.server = &http.Server{
@@ -86,6 +101,15 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	_ = s.client.Close()
+
+	// Close active WebSocket connections
+	s.wsMu.Lock()
+	for conn := range s.wsClients {
+		_ = conn.Close()
+	}
+	s.wsClients = make(map[*websocket.Conn]bool)
+	s.wsMu.Unlock()
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -139,6 +163,54 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	uptimeSec := time.Since(s.startTime).Seconds()
+	reqs := atomic.LoadUint64(&s.reqCount)
+	events := atomic.LoadUint64(&s.eventCount)
+
+	s.sseMu.Lock()
+	sseCount := len(s.sseClients)
+	s.sseMu.Unlock()
+
+	s.wsMu.Lock()
+	wsCount := len(s.wsClients)
+	s.wsMu.Unlock()
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	fmt.Fprintf(w, "# HELP tvcalendar_uptime_seconds Total uptime in seconds\n")
+	fmt.Fprintf(w, "# TYPE tvcalendar_uptime_seconds counter\n")
+	fmt.Fprintf(w, "tvcalendar_uptime_seconds %.2f\n\n", uptimeSec)
+
+	fmt.Fprintf(w, "# HELP tvcalendar_requests_total Total number of HTTP requests received\n")
+	fmt.Fprintf(w, "# TYPE tvcalendar_requests_total counter\n")
+	fmt.Fprintf(w, "tvcalendar_requests_total %d\n\n", reqs)
+
+	fmt.Fprintf(w, "# HELP tvcalendar_events_served_total Total count of events queried and served\n")
+	fmt.Fprintf(w, "# TYPE tvcalendar_events_served_total counter\n")
+	fmt.Fprintf(w, "tvcalendar_events_served_total %d\n\n", events)
+
+	fmt.Fprintf(w, "# HELP tvcalendar_active_sse_clients Number of active SSE streaming connections\n")
+	fmt.Fprintf(w, "# TYPE tvcalendar_active_sse_clients gauge\n")
+	fmt.Fprintf(w, "tvcalendar_active_sse_clients %d\n\n", sseCount)
+
+	fmt.Fprintf(w, "# HELP tvcalendar_active_ws_clients Number of active WebSocket streaming connections\n")
+	fmt.Fprintf(w, "# TYPE tvcalendar_active_ws_clients gauge\n")
+	fmt.Fprintf(w, "tvcalendar_active_ws_clients %d\n\n", wsCount)
+
+	fmt.Fprintf(w, "# HELP go_goroutines Number of goroutines currently executing\n")
+	fmt.Fprintf(w, "# TYPE go_goroutines gauge\n")
+	fmt.Fprintf(w, "go_goroutines %d\n\n", runtime.NumGoroutine())
+
+	fmt.Fprintf(w, "# HELP go_memstats_alloc_bytes Bytes allocated and still in use\n")
+	fmt.Fprintf(w, "# TYPE go_memstats_alloc_bytes gauge\n")
+	fmt.Fprintf(w, "go_memstats_alloc_bytes %d\n", mem.Alloc)
+}
+
 func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -173,7 +245,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply currency filter if specified
 	currenciesParam := q.Get("currency")
 	var targetCurrencies map[string]bool
 	if currenciesParam != "" {
@@ -183,7 +254,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Apply impact filter if specified
 	impactsParam := q.Get("impact")
 	var targetImpacts map[string]bool
 	if impactsParam != "" {
@@ -193,7 +263,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Apply country filter if specified
 	countriesParam := q.Get("country")
 	var targetCountries map[string]bool
 	if countriesParam != "" {
@@ -220,7 +289,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	totalFiltered := len(filtered)
 	atomic.AddUint64(&s.eventCount, uint64(totalFiltered))
 
-	// Pagination support: limit and offset
 	offset := 0
 	if offsetStr := q.Get("offset"); offsetStr != "" {
 		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
@@ -311,15 +379,55 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+
+	s.wsMu.Lock()
+	s.wsClients[conn] = true
+	s.wsMu.Unlock()
+
+	defer func() {
+		s.wsMu.Lock()
+		delete(s.wsClients, conn)
+		s.wsMu.Unlock()
+		_ = conn.Close()
+	}()
+
+	_ = conn.WriteJSON(map[string]interface{}{
+		"event": "connected",
+		"time":  time.Now().UTC().Format(time.RFC3339),
+	})
+
+	for {
+		// Keep connection open and drain incoming ping/pong/messages
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+
+	s.sseMu.Lock()
+	sseCount := len(s.sseClients)
+	s.sseMu.Unlock()
+
+	s.wsMu.Lock()
+	wsCount := len(s.wsClients)
+	s.wsMu.Unlock()
 
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"uptime":             time.Since(s.startTime).String(),
 		"total_requests":     atomic.LoadUint64(&s.reqCount),
 		"total_events_query": atomic.LoadUint64(&s.eventCount),
-		"active_sse_clients": len(s.sseClients),
+		"active_sse_clients": sseCount,
+		"active_ws_clients":  wsCount,
 		"goroutines":         runtime.NumGoroutine(),
 		"alloc_memory_mb":    fmt.Sprintf("%.2f MB", float64(mem.Alloc)/1024/1024),
 	})

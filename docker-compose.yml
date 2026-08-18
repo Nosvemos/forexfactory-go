@@ -1,0 +1,18 @@
+services:
+  tvcalendar:
+    build: .
+    container_name: tvcalendar-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=UTC
+    command: ["serve", "--port", "8080"]
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

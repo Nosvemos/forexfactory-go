@@ -1,7 +1,11 @@
 package bridge
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +13,12 @@ import (
 
 	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestBridgeAtomicFiles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "mt4_test_*")
@@ -83,6 +93,73 @@ func TestBridgeAtomicFiles(t *testing.T) {
 	}
 }
 
+func TestBridgeSyncOnce(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mt4_sync_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	now := time.Now().UTC().Add(30 * time.Minute)
+	dateStr := now.Format(time.RFC3339)
+
+	mockJSON := `{
+		"status": "ok",
+		"result": [
+			{"id": "500", "title": "US NFP", "country": "US", "currency": "USD", "importance": 1, "date": "` + dateStr + `"}
+		]
+	}`
+
+	mockClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewBufferString(mockJSON)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	b := &Bridge{
+		cfg: BridgeConfig{
+			OutputDir:  tempDir,
+			MinImpact:  tvcalendar.ImpactHigh,
+			Currencies: []string{"USD"},
+		},
+		client: tvcalendar.NewClient(tvcalendar.WithHTTPClient(mockClient)),
+	}
+
+	ctx := context.Background()
+	if err := b.SyncOnce(ctx); err != nil {
+		t.Fatalf("SyncOnce failed: %v", err)
+	}
+
+	jsonPath := filepath.Join(tempDir, "ff_news_filter.json")
+	if _, err := os.Stat(jsonPath); err != nil {
+		t.Errorf("Expected news filter json file to be created, got error: %v", err)
+	}
+}
+
+func TestBridgeStartAndCancel(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "mt4_cancel_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	b := NewBridge(BridgeConfig{
+		OutputDir:  tempDir,
+		MinImpact:  tvcalendar.ImpactMedium,
+		Interval:   50 * time.Millisecond,
+		Currencies: []string{"USD", "EUR"},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_ = b.Start(ctx)
+}
+
 func TestIsImpactEligible(t *testing.T) {
 	if !isImpactEligible(tvcalendar.ImpactHigh, tvcalendar.ImpactMedium) {
 		t.Errorf("Expected High impact to be eligible when target is Medium")
@@ -92,5 +169,8 @@ func TestIsImpactEligible(t *testing.T) {
 	}
 	if !isImpactEligible(tvcalendar.ImpactHigh, tvcalendar.ImpactHigh) {
 		t.Errorf("Expected High impact to be eligible when target is High")
+	}
+	if !isImpactEligible(tvcalendar.ImpactLow, tvcalendar.ImpactNone) {
+		t.Errorf("Expected Low impact to be eligible when target is None")
 	}
 }

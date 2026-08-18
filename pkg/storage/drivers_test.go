@@ -3,6 +3,9 @@ package storage
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func TestDriversImplementsStorageInterface(t *testing.T) {
@@ -22,6 +25,56 @@ func TestDriversImplementsStorageInterface(t *testing.T) {
 	var infVar interface{} = NewInfluxDBStorage("http://localhost:8086", "token", "org", "bucket")
 	if _, ok := infVar.(Storage); !ok {
 		t.Errorf("InfluxDBStorage does not implement Storage interface")
+	}
+}
+
+func TestDriversUninitializedErrors(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	// 1. PostgreSQL Uninitialized
+	pgStore := NewPostgresStorage("")
+	if err := pgStore.SaveEvents(ctx, []tvcalendar.Event{}); err == nil {
+		t.Errorf("Expected error when saving on uninitialized Postgres, got nil")
+	}
+	if _, err := pgStore.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on uninitialized Postgres GetEvents, got nil")
+	}
+	if _, err := pgStore.GetEventsByCurrency(ctx, "USD"); err == nil {
+		t.Errorf("Expected error on uninitialized Postgres GetEventsByCurrency, got nil")
+	}
+	if _, err := pgStore.QueryEvents(ctx, QueryFilter{}); err == nil {
+		t.Errorf("Expected error on uninitialized Postgres QueryEvents, got nil")
+	}
+
+	// 2. ClickHouse Uninitialized
+	chStore := NewClickHouseStorage("", "", "", "")
+	if err := chStore.SaveEvents(ctx, []tvcalendar.Event{}); err == nil {
+		t.Errorf("Expected error when saving on uninitialized ClickHouse, got nil")
+	}
+	if _, err := chStore.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on uninitialized ClickHouse GetEvents, got nil")
+	}
+	if _, err := chStore.GetEventsByCurrency(ctx, "USD"); err == nil {
+		t.Errorf("Expected error on uninitialized ClickHouse GetEventsByCurrency, got nil")
+	}
+	if _, err := chStore.QueryEvents(ctx, QueryFilter{}); err == nil {
+		t.Errorf("Expected error on uninitialized ClickHouse QueryEvents, got nil")
+	}
+
+	// 3. InfluxDB Uninitialized
+	infStore := NewInfluxDBStorage("", "", "", "")
+	if err := infStore.SaveEvents(ctx, []tvcalendar.Event{}); err == nil {
+		t.Errorf("Expected error when saving on uninitialized InfluxDB, got nil")
+	}
+	if _, err := infStore.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on uninitialized InfluxDB GetEvents, got nil")
+	}
+	if _, err := infStore.GetEventsByCurrency(ctx, "USD"); err == nil {
+		t.Errorf("Expected error on uninitialized InfluxDB GetEventsByCurrency, got nil")
+	}
+	if _, err := infStore.QueryEvents(ctx, QueryFilter{}); err == nil {
+		t.Errorf("Expected error on uninitialized InfluxDB QueryEvents, got nil")
 	}
 }
 

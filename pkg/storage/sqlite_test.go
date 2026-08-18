@@ -13,7 +13,6 @@ import (
 
 func TestSQLiteStorage(t *testing.T) {
 	dbPath := "test_sandbox.db"
-	// Clean up after test
 	defer os.Remove(dbPath)
 
 	store := NewSQLiteStorage(dbPath)
@@ -29,26 +28,38 @@ func TestSQLiteStorage(t *testing.T) {
 		{
 			ID:          "998877",
 			Title:       "FOMC Press Conference",
+			Country:     "US",
 			Currency:    "USD",
 			Date:        time.Date(2026, time.May, 26, 14, 30, 0, 0, time.UTC),
 			Impact:      tvcalendar.ImpactHigh,
-			Forecast:    "",
-			Previous:    "",
-			Actual:      "",
+			Forecast:    "5.25%",
+			Previous:    "5.50%",
+			Actual:      "5.25%",
+			Unit:        "%",
+			Category:    "mny",
+			Indicator:   "Interest Rate",
+			Comment:     "Federal Reserve interest rate statement",
+			Source:      "Federal Reserve",
+			SourceURL:   "https://www.federalreserve.gov",
+			Ticker:      "ECONOMICS:USINTR",
 			IsAllDay:    false,
 			IsTentative: false,
 		},
 		{
 			ID:          "", // Testing auto-generated ID
 			Title:       "French CPI m/m",
+			Country:     "FR",
 			Currency:    "EUR",
 			Date:        time.Date(2026, time.May, 26, 8, 45, 0, 0, time.UTC),
 			Impact:      tvcalendar.ImpactMedium,
 			Forecast:    "0.2%",
 			Previous:    "0.1%",
 			Actual:      "0.3%",
-			IsAllDay:    false,
-			IsTentative: false,
+			Unit:        "%",
+			Category:    "prce",
+			Indicator:   "Inflation",
+			IsAllDay:    true,
+			IsTentative: true,
 		},
 	}
 
@@ -56,7 +67,6 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Fatalf("SaveEvents failed: %v", err)
 	}
 
-	// Test new SDK query functions
 	// 3. Test GetEvents
 	startQuery := time.Date(2026, time.May, 26, 0, 0, 0, 0, time.UTC)
 	endQuery := time.Date(2026, time.May, 26, 23, 59, 59, 0, time.UTC)
@@ -97,7 +107,7 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	// 4. Verify data in sandbox using raw SQL query
+	// 6. Verify data in sandbox using raw SQL query
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to open verified database: %v", err)
@@ -125,6 +135,26 @@ func TestSQLiteStorage(t *testing.T) {
 	if count != 1 {
 		t.Errorf("Expected 1 EUR row from auto-generation, got %d", count)
 	}
+}
+
+func TestSQLiteStorageUninitialized(t *testing.T) {
+	store := NewSQLiteStorage("uninit.db")
+	ctx := context.Background()
+	now := time.Now()
+
+	if err := store.SaveEvents(ctx, []tvcalendar.Event{{Title: "Test"}}); err == nil {
+		t.Errorf("Expected error when saving on uninitialized store")
+	}
+	if _, err := store.GetEvents(ctx, now, now); err == nil {
+		t.Errorf("Expected error on uninitialized GetEvents")
+	}
+	if _, err := store.GetEventsByCurrency(ctx, "USD"); err == nil {
+		t.Errorf("Expected error on uninitialized GetEventsByCurrency")
+	}
+	if _, err := store.QueryEvents(ctx, QueryFilter{}); err == nil {
+		t.Errorf("Expected error on uninitialized QueryEvents")
+	}
+	_ = store.Close()
 }
 
 func TestSQLiteStorageEmptyEvents(t *testing.T) {
