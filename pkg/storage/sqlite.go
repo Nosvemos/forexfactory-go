@@ -23,7 +23,7 @@ func NewSQLiteStorage(dbPath string) *SQLiteStorage {
 	return &SQLiteStorage{dbPath: dbPath}
 }
 
-// Init opens the database and configures the table schemas and indices.
+// Init opens the database and configures the table schemas, indices, and performance pragmas.
 func (s *SQLiteStorage) Init(ctx context.Context) error {
 	db, err := sql.Open("sqlite", s.dbPath)
 	if err != nil {
@@ -36,31 +36,45 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 	s.db.SetMaxIdleConns(1)
 	s.db.SetConnMaxLifetime(time.Hour)
 
-	// Enable WAL (Write-Ahead Logging) mode for concurrent read/write stability
-	if _, err := s.db.ExecContext(ctx, "PRAGMA journal_mode=WAL;"); err != nil {
-		return fmt.Errorf("failed to enable SQLite WAL mode: %w", err)
+	// High-performance PRAGMA configurations for SQLite
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL;",
+		"PRAGMA busy_timeout=10000;",
+		"PRAGMA synchronous=NORMAL;",
+		"PRAGMA cache_size=-64000;", // 64MB cache
+		"PRAGMA temp_store=MEMORY;",
 	}
-
-	// Set busy_timeout to prevent lockups during concurrent writes
-	if _, err := s.db.ExecContext(ctx, "PRAGMA busy_timeout=5000;"); err != nil {
-		return fmt.Errorf("failed to set SQLite busy timeout: %w", err)
+	for _, p := range pragmas {
+		if _, err := s.db.ExecContext(ctx, p); err != nil {
+			return fmt.Errorf("failed to apply SQLite pragma %q: %w", p, err)
+		}
 	}
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS events (
 		id TEXT PRIMARY KEY,
-		title TEXT,
-		currency TEXT,
-		date TEXT,
-		impact TEXT,
+		title TEXT NOT NULL,
+		country TEXT,
+		currency TEXT NOT NULL,
+		date TEXT NOT NULL,
+		impact TEXT NOT NULL,
 		forecast TEXT,
 		previous TEXT,
 		actual TEXT,
-		all_day INTEGER,
-		tentative INTEGER
+		unit TEXT,
+		category TEXT,
+		indicator TEXT,
+		comment TEXT,
+		source TEXT,
+		source_url TEXT,
+		ticker TEXT,
+		all_day INTEGER DEFAULT 0,
+		tentative INTEGER DEFAULT 0
 	);
 	CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 	CREATE INDEX IF NOT EXISTS idx_events_currency ON events(currency);
+	CREATE INDEX IF NOT EXISTS idx_events_date_impact ON events(date, impact);
+	CREATE INDEX IF NOT EXISTS idx_events_currency_date ON events(currency, date);
 	`
 
 	_, err = s.db.ExecContext(ctx, schema)
@@ -77,6 +91,10 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []tvcalendar.Even
 		return fmt.Errorf("database not initialized, call Init() first")
 	}
 
+	if len(events) == 0 {
+		return nil
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -84,8 +102,9 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []tvcalendar.Even
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO events (
-			id, title, currency, date, impact, forecast, previous, actual, all_day, tentative
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			id, title, country, currency, date, impact, forecast, previous, actual, 
+			unit, category, indicator, comment, source, source_url, ticker, all_day, tentative
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		_ = tx.Rollback()
@@ -105,7 +124,6 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []tvcalendar.Even
 
 		eventID := e.ID
 		if eventID == "" {
-			// Generate standard unique hash based on timestamp, currency, event name, impact and forecast to prevent collisions
 			hashInput := fmt.Sprintf("%d-%s-%s-%s-%s-%s", e.Date.Unix(), e.Currency, strings.ReplaceAll(strings.ToLower(e.Title), " ", "-"), e.Impact, e.Forecast, e.Previous)
 			h := sha256.Sum256([]byte(hashInput))
 			eventID = fmt.Sprintf("fallback-%x", h[:8])
@@ -114,12 +132,20 @@ func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []tvcalendar.Even
 		_, err = stmt.ExecContext(ctx,
 			eventID,
 			e.Title,
+			e.Country,
 			e.Currency,
 			e.Date.Format(time.RFC3339),
 			string(e.Impact),
 			e.Forecast,
 			e.Previous,
 			e.Actual,
+			e.Unit,
+			e.Category,
+			e.Indicator,
+			e.Comment,
+			e.Source,
+			e.SourceURL,
+			e.Ticker,
 			allDayVal,
 			tentativeVal,
 		)
@@ -150,12 +176,12 @@ func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
 
-	// Format dates in RFC3339 for correct string comparison in SQLite
 	startStr := start.Format(time.RFC3339)
 	endStr := end.Format(time.RFC3339)
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, country, currency, date, impact, forecast, previous, actual,
+		       unit, category, indicator, comment, source, source_url, ticker, all_day, tentative 
 		FROM events 
 		WHERE date >= ? AND date <= ?
 		ORDER BY date ASC
@@ -175,7 +201,8 @@ func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative 
+		SELECT id, title, country, currency, date, impact, forecast, previous, actual,
+		       unit, category, indicator, comment, source, source_url, ticker, all_day, tentative 
 		FROM events 
 		WHERE currency = ?
 		ORDER BY date ASC
@@ -188,7 +215,7 @@ func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string
 	return scanEvents(rows)
 }
 
-// QueryEvents retrieves events matching a dynamic filter payload (date range, countries, and impacts).
+// QueryEvents retrieves events matching a dynamic filter payload (date range, currencies, and impacts).
 func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
@@ -197,8 +224,12 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 	var queryParts []string
 	var args []interface{}
 
-	// Base query
-	queryParts = append(queryParts, "SELECT id, title, currency, date, impact, forecast, previous, actual, all_day, tentative FROM events WHERE 1=1")
+	queryParts = append(queryParts, `
+		SELECT id, title, country, currency, date, impact, forecast, previous, actual,
+		       unit, category, indicator, comment, source, source_url, ticker, all_day, tentative 
+		FROM events 
+		WHERE 1=1
+	`)
 
 	if filter.StartDate != nil {
 		queryParts = append(queryParts, "AND date >= ?")
@@ -239,7 +270,6 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 	return scanEvents(rows)
 }
 
-// scanEvents is a helper function that reads database rows into Event structs.
 func scanEvents(rows *sql.Rows) ([]tvcalendar.Event, error) {
 	var events []tvcalendar.Event
 
@@ -252,12 +282,20 @@ func scanEvents(rows *sql.Rows) ([]tvcalendar.Event, error) {
 		err := rows.Scan(
 			&e.ID,
 			&e.Title,
+			&e.Country,
 			&e.Currency,
 			&dateStr,
 			&impactStr,
 			&e.Forecast,
 			&e.Previous,
 			&e.Actual,
+			&e.Unit,
+			&e.Category,
+			&e.Indicator,
+			&e.Comment,
+			&e.Source,
+			&e.SourceURL,
+			&e.Ticker,
 			&allDayVal,
 			&tentativeVal,
 		)
@@ -265,18 +303,12 @@ func scanEvents(rows *sql.Rows) ([]tvcalendar.Event, error) {
 			return nil, fmt.Errorf("failed to scan event row: %w", err)
 		}
 
-		// Parse date back to time.Time
 		parsedTime, err := time.Parse(time.RFC3339, dateStr)
 		if err != nil {
-			// Fallback to simpler ISO-8601 parsing if needed
 			parsedTime, _ = time.Parse("2006-01-02 15:04:05", dateStr)
 		}
 		e.Date = parsedTime
-
-		// Map Impact
 		e.Impact = tvcalendar.Impact(impactStr)
-
-		// Map boolean flags
 		e.IsAllDay = allDayVal == 1
 		e.IsTentative = tentativeVal == 1
 

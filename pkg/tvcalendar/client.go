@@ -36,11 +36,24 @@ type Client struct {
 
 // NewClient creates and initializes a new Client with the provided options.
 func NewClient(opts ...Option) *Client {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 25,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:   true,
+	}
+
 	c := &Client{
-		httpClient:  &http.Client{Timeout: 15 * time.Second},
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   15 * time.Second,
+		},
 		userAgent:   defaultUserAgent,
 		maxRetries:  3,
-		rateLimit:   10, // Default 10 req/s (TradingView allows fast bursts)
+		rateLimit:   10, // Default 10 req/s
 		concurrency: 5,  // Default 5 concurrent workers
 	}
 
@@ -50,9 +63,7 @@ func NewClient(opts ...Option) *Client {
 
 	if c.proxyURL != "" {
 		if parsedURL, err := url.Parse(c.proxyURL); err == nil {
-			c.httpClient.Transport = &http.Transport{
-				Proxy: http.ProxyURL(parsedURL),
-			}
+			transport.Proxy = http.ProxyURL(parsedURL)
 		}
 	}
 

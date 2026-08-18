@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,18 +58,21 @@ func NewServer(cfg Config) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/calendar", s.handleCalendar)
+	mux.HandleFunc("/api/v1/events", s.handleCalendar) // Route alias
 	mux.HandleFunc("/api/v1/live", s.handleLive)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/stats", s.handleStats)
 
-	// Wrap mux with CORS and Logging
-	handler := s.corsMiddleware(mux)
+	// Wrap mux with CORS, Security headers, and Metrics
+	handler := s.middleware(mux)
 
 	s.server = &http.Server{
-		Addr:         cfg.Addr,
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		Addr:              cfg.Addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	return s
@@ -90,13 +94,19 @@ func (s *Server) Handler() http.Handler {
 	return s.server.Handler
 }
 
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddUint64(&s.reqCount, 1)
 
+		// CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -207,13 +217,41 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, e)
 	}
 
-	atomic.AddUint64(&s.eventCount, uint64(len(filtered)))
+	totalFiltered := len(filtered)
+	atomic.AddUint64(&s.eventCount, uint64(totalFiltered))
+
+	// Pagination support: limit and offset
+	offset := 0
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	limit := totalFiltered
+	if limitStr := q.Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	var paginated []tvcalendar.Event
+	if offset < totalFiltered {
+		endIdx := offset + limit
+		if endIdx > totalFiltered {
+			endIdx = totalFiltered
+		}
+		paginated = filtered[offset:endIdx]
+	}
 
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"count":  len(filtered),
+		"total":  totalFiltered,
+		"count":  len(paginated),
+		"offset": offset,
+		"limit":  limit,
 		"start":  startStr,
 		"end":    endStr,
-		"events": filtered,
+		"events": paginated,
 	})
 }
 
@@ -253,7 +291,6 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		close(clientChan)
 	}()
 
-	// Send initial greeting
 	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\",\"time\":\"%s\"}\n\n", time.Now().UTC().Format(time.RFC3339))
 	flusher.Flush()
 
@@ -268,7 +305,6 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: update\ndata: %s\n\n", string(msg))
 			flusher.Flush()
 		case <-ticker.C:
-			// Heartbeat
 			fmt.Fprintf(w, ": heartbeat\n\n")
 			flusher.Flush()
 		}
