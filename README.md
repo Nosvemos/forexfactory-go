@@ -6,7 +6,7 @@
     <a href="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
     <a href="https://pkg.go.dev/github.com/Nosvemos/tradingview-calendar-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/tradingview-calendar-go.svg" alt="Go Reference"></a>
     <a href="https://github.com/Nosvemos/tradingview-calendar-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/tradingview-calendar-go" alt="Latest release"></a>
-    <img src="https://img.shields.io/badge/go-1.22+-00ADD8.svg" alt="Go version">
+    <img src="https://img.shields.io/badge/go-1.26+-00ADD8.svg" alt="Go version">
     <img src="https://img.shields.io/badge/license-Non--Commercial%20Source--Available-red.svg" alt="License">
   </p>
 </div>
