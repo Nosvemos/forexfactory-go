@@ -1,5 +1,5 @@
 # .goreleaser.yaml
-# Production-ready GoReleaser configuration for forexfactory-go
+# Production-ready GoReleaser configuration for forexcalendar-go
 version: 2
 
 before:
@@ -7,9 +7,22 @@ before:
     - go mod tidy
 
 builds:
-  - id: forexfactory-go
-    main: ./cmd/forexfactory-go/main.go
-    binary: forexfactory-go
+  - id: forexcalendar-go
+    main: ./cmd/forexcalendar-go/main.go
+    binary: forexcalendar
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: fc-notifier
+    main: ./cmd/fc-notifier/main.go
+    binary: fc-notifier
     env:
       - CGO_ENABLED=0
     goos:
@@ -22,7 +35,6 @@ builds:
 
 archives:
   - format: tar.gz
-    # use zip for windows archives
     format_overrides:
       - goos: windows
         format: zip

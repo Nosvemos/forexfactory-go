@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
 )
 
 // Config holds configuration for the HTTP API server.
@@ -19,13 +19,11 @@ type Config struct {
 	Addr        string
 	RateLimit   int
 	Concurrency int
-	Cookie      string
-	Headless    bool
 }
 
-// Server provides a high-performance REST API and SSE streaming microservice for Forex Factory data.
+// Server provides a high-performance REST API and SSE streaming microservice for global economic calendar data.
 type Server struct {
-	client     *forexfactory.Client
+	client     *forexcalendar.Client
 	server     *http.Server
 	startTime  time.Time
 	reqCount   uint64
@@ -42,20 +40,16 @@ func NewServer(cfg Config) *Server {
 		cfg.Addr = ":8080"
 	}
 
-	var clientOpts []forexfactory.Option
+	var clientOpts []forexcalendar.Option
 	if cfg.RateLimit > 0 {
-		clientOpts = append(clientOpts, forexfactory.WithRateLimit(cfg.RateLimit))
+		clientOpts = append(clientOpts, forexcalendar.WithRateLimit(cfg.RateLimit))
 	}
 	if cfg.Concurrency > 0 {
-		clientOpts = append(clientOpts, forexfactory.WithConcurrency(cfg.Concurrency))
+		clientOpts = append(clientOpts, forexcalendar.WithConcurrency(cfg.Concurrency))
 	}
-	if cfg.Cookie != "" {
-		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cfg.Cookie))
-	}
-	clientOpts = append(clientOpts, forexfactory.WithHeadless(cfg.Headless))
 
 	s := &Server{
-		client:     forexfactory.NewClient(clientOpts...),
+		client:     forexcalendar.NewClient(clientOpts...),
 		startTime:  time.Now(),
 		sseClients: make(map[chan []byte]bool),
 	}
@@ -63,7 +57,6 @@ func NewServer(cfg Config) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/calendar", s.handleCalendar)
-	mux.HandleFunc("/api/v1/event", s.handleEvent)
 	mux.HandleFunc("/api/v1/live", s.handleLive)
 	mux.HandleFunc("/api/v1/stream", s.handleStream)
 	mux.HandleFunc("/api/v1/stats", s.handleStats)
@@ -86,7 +79,7 @@ func (s *Server) Start() error {
 	return s.server.ListenAndServe()
 }
 
-// Shutdown gracefully shuts down the server and releases browser instances.
+// Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	_ = s.client.Close()
 	return s.server.Shutdown(ctx)
@@ -131,7 +124,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":  "ok",
 		"uptime":  time.Since(s.startTime).String(),
-		"version": "2.0.0",
+		"version": "3.0.0",
 		"time":    time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -190,12 +183,25 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var filtered []forexfactory.Event
+	// Apply country filter if specified
+	countriesParam := q.Get("country")
+	var targetCountries map[string]bool
+	if countriesParam != "" {
+		targetCountries = make(map[string]bool)
+		for _, cnt := range strings.Split(countriesParam, ",") {
+			targetCountries[strings.ToUpper(strings.TrimSpace(cnt))] = true
+		}
+	}
+
+	var filtered []forexcalendar.Event
 	for _, e := range events {
 		if targetCurrencies != nil && !targetCurrencies[strings.ToUpper(e.Currency)] {
 			continue
 		}
 		if targetImpacts != nil && !targetImpacts[strings.ToLower(string(e.Impact))] {
+			continue
+		}
+		if targetCountries != nil && !targetCountries[strings.ToUpper(e.Country)] {
 			continue
 		}
 		filtered = append(filtered, e)
@@ -209,22 +215,6 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		"end":    endStr,
 		"events": filtered,
 	})
-}
-
-func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request) {
-	eventID := r.URL.Query().Get("id")
-	if eventID == "" {
-		s.writeError(w, http.StatusBadRequest, "Missing required query parameter 'id'")
-		return
-	}
-
-	detail, err := s.client.FetchEventDetail(r.Context(), eventID)
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch event detail: %v", err))
-		return
-	}
-
-	s.writeJSON(w, http.StatusOK, detail)
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {

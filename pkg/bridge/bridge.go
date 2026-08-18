@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
 )
 
 // BridgeConfig holds parameters for syncing Forex Factory news with MT4/MT5 terminals.
 type BridgeConfig struct {
 	OutputDir   string
-	MinImpact   forexfactory.Impact
+	MinImpact   forexcalendar.Impact
 	Interval    time.Duration
 	Timezone    *time.Location
 	Currencies  []string
@@ -48,7 +48,7 @@ type UpcomingEvent struct {
 // Bridge periodically fetches live economic events and publishes atomic news filter files for MT4/MT5.
 type Bridge struct {
 	cfg    BridgeConfig
-	client *forexfactory.Client
+	client *forexcalendar.Client
 }
 
 // NewBridge creates a new MetaTrader news filter bridge instance.
@@ -57,22 +57,18 @@ func NewBridge(cfg BridgeConfig) *Bridge {
 		cfg.Interval = 1 * time.Minute
 	}
 	if cfg.MinImpact == "" {
-		cfg.MinImpact = forexfactory.ImpactHigh
+		cfg.MinImpact = forexcalendar.ImpactHigh
 	}
 	if cfg.Timezone == nil {
 		cfg.Timezone = time.UTC
 	}
 
-	var clientOpts []forexfactory.Option
-	clientOpts = append(clientOpts, forexfactory.WithTimeLocation(cfg.Timezone))
-	if cfg.Cookie != "" {
-		clientOpts = append(clientOpts, forexfactory.WithHeader("Cookie", cfg.Cookie))
-	}
-	clientOpts = append(clientOpts, forexfactory.WithHeadless(cfg.Headless))
+	var clientOpts []forexcalendar.Option
+	clientOpts = append(clientOpts, forexcalendar.WithTimeLocation(cfg.Timezone))
 
 	return &Bridge{
 		cfg:    cfg,
-		client: forexfactory.NewClient(clientOpts...),
+		client: forexcalendar.NewClient(clientOpts...),
 	}
 }
 
@@ -224,12 +220,12 @@ func (b *Bridge) writeAtomicFiles(payload NewsFilterPayload) error {
 	return os.Rename(tmpCSVPath, csvPath)
 }
 
-func isImpactEligible(actual, target forexfactory.Impact) bool {
-	weight := map[forexfactory.Impact]int{
-		forexfactory.ImpactHigh:   3,
-		forexfactory.ImpactMedium: 2,
-		forexfactory.ImpactLow:    1,
-		forexfactory.ImpactNone:   0,
+func isImpactEligible(actual, target forexcalendar.Impact) bool {
+	weight := map[forexcalendar.Impact]int{
+		forexcalendar.ImpactHigh:   3,
+		forexcalendar.ImpactMedium: 2,
+		forexcalendar.ImpactLow:    1,
+		forexcalendar.ImpactNone:   0,
 	}
 	return weight[actual] >= weight[target]
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
 )
 
 func TestSQLiteStorage(t *testing.T) {
@@ -25,13 +25,13 @@ func TestSQLiteStorage(t *testing.T) {
 	}
 
 	// 2. Test Ingestion / Saving Events
-	testEvents := []forexfactory.Event{
+	testEvents := []forexcalendar.Event{
 		{
 			ID:          "998877",
 			Title:       "FOMC Press Conference",
 			Currency:    "USD",
 			Date:        time.Date(2026, time.May, 26, 14, 30, 0, 0, time.UTC),
-			Impact:      forexfactory.ImpactHigh,
+			Impact:      forexcalendar.ImpactHigh,
 			Forecast:    "",
 			Previous:    "",
 			Actual:      "",
@@ -43,7 +43,7 @@ func TestSQLiteStorage(t *testing.T) {
 			Title:       "French CPI m/m",
 			Currency:    "EUR",
 			Date:        time.Date(2026, time.May, 26, 8, 45, 0, 0, time.UTC),
-			Impact:      forexfactory.ImpactMedium,
+			Impact:      forexcalendar.ImpactMedium,
 			Forecast:    "0.2%",
 			Previous:    "0.1%",
 			Actual:      "0.3%",
@@ -82,7 +82,7 @@ func TestSQLiteStorage(t *testing.T) {
 		StartDate:  &startQuery,
 		EndDate:    &endQuery,
 		Currencies: []string{"USD"},
-		Impacts:    []forexfactory.Impact{forexfactory.ImpactHigh},
+		Impacts:    []forexcalendar.Impact{forexcalendar.ImpactHigh},
 	}
 	highUsdEvents, err := store.QueryEvents(ctx, filter)
 	if err != nil {
@@ -139,7 +139,7 @@ func TestSQLiteStorageEmptyEvents(t *testing.T) {
 	}
 	defer store.Close()
 
-	if err := store.SaveEvents(ctx, []forexfactory.Event{}); err != nil {
+	if err := store.SaveEvents(ctx, []forexcalendar.Event{}); err != nil {
 		t.Fatalf("Expected saving empty events slice to succeed, got %v", err)
 	}
 }
@@ -156,15 +156,15 @@ func TestSQLiteStorageBatchLarge(t *testing.T) {
 	}
 	defer store.Close()
 
-	var events []forexfactory.Event
+	var events []forexcalendar.Event
 	baseDate := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < 250; i++ {
-		events = append(events, forexfactory.Event{
+		events = append(events, forexcalendar.Event{
 			ID:       fmt.Sprintf("batch-event-%d", i),
 			Title:    fmt.Sprintf("Economic Release #%d", i),
 			Currency: "USD",
 			Date:     baseDate.Add(time.Duration(i) * time.Hour),
-			Impact:   forexfactory.ImpactHigh,
+			Impact:   forexcalendar.ImpactHigh,
 			Forecast: "1.0%",
 			Previous: "0.8%",
 			Actual:   "1.2%",

@@ -11,16 +11,16 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
 )
 
 var (
-	clientRegistry = make(map[int64]*forexfactory.Client)
+	clientRegistry = make(map[int64]*forexcalendar.Client)
 	registryMu     sync.Mutex
 	nextHandle     int64 = 1
 )
 
-func registerClient(c *forexfactory.Client) int64 {
+func registerClient(c *forexcalendar.Client) int64 {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	h := nextHandle
@@ -29,7 +29,7 @@ func registerClient(c *forexfactory.Client) int64 {
 	return h
 }
 
-func getClient(h int64) *forexfactory.Client {
+func getClient(h int64) *forexcalendar.Client {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	return clientRegistry[h]
@@ -52,6 +52,8 @@ type ClientOptions struct {
 	Concurrency int      `json:"concurrency"`
 	Timezone    string   `json:"timezone"`
 	Impacts     []string `json:"impacts"`
+	Currencies  []string `json:"currencies"`
+	Countries   []string `json:"countries"`
 }
 
 //export InitClient
@@ -63,41 +65,47 @@ func InitClient(optsJSON *C.char) C.longlong {
 	var opts ClientOptions
 
 	// Default values
-	opts.RateLimit = 1
-	opts.Concurrency = 3
+	opts.RateLimit = 10
+	opts.Concurrency = 5
 
 	if goStr != "" {
 		_ = json.Unmarshal([]byte(goStr), &opts)
 	}
 
-	var clientOpts []forexfactory.Option
+	var clientOpts []forexcalendar.Option
 
 	if opts.UserAgent != "" {
-		clientOpts = append(clientOpts, forexfactory.WithUserAgent(opts.UserAgent))
+		clientOpts = append(clientOpts, forexcalendar.WithUserAgent(opts.UserAgent))
 	}
 	if opts.ProxyURL != "" {
-		clientOpts = append(clientOpts, forexfactory.WithProxy(opts.ProxyURL))
+		clientOpts = append(clientOpts, forexcalendar.WithProxy(opts.ProxyURL))
 	}
 	if opts.RateLimit > 0 {
-		clientOpts = append(clientOpts, forexfactory.WithRateLimit(opts.RateLimit))
+		clientOpts = append(clientOpts, forexcalendar.WithRateLimit(opts.RateLimit))
 	}
 	if opts.Concurrency > 0 {
-		clientOpts = append(clientOpts, forexfactory.WithConcurrency(opts.Concurrency))
+		clientOpts = append(clientOpts, forexcalendar.WithConcurrency(opts.Concurrency))
 	}
 	if opts.Timezone != "" {
 		if loc, err := time.LoadLocation(opts.Timezone); err == nil {
-			clientOpts = append(clientOpts, forexfactory.WithTimeLocation(loc))
+			clientOpts = append(clientOpts, forexcalendar.WithTimeLocation(loc))
 		}
 	}
 	if len(opts.Impacts) > 0 {
-		var imps []forexfactory.Impact
+		var imps []forexcalendar.Impact
 		for _, impStr := range opts.Impacts {
-			imps = append(imps, forexfactory.Impact(impStr))
+			imps = append(imps, forexcalendar.Impact(impStr))
 		}
-		clientOpts = append(clientOpts, forexfactory.WithImpacts(imps...))
+		clientOpts = append(clientOpts, forexcalendar.WithImpactFilter(imps...))
+	}
+	if len(opts.Currencies) > 0 {
+		clientOpts = append(clientOpts, forexcalendar.WithCurrencyFilter(opts.Currencies...))
+	}
+	if len(opts.Countries) > 0 {
+		clientOpts = append(clientOpts, forexcalendar.WithCountryFilter(opts.Countries...))
 	}
 
-	client := forexfactory.NewClient(clientOpts...)
+	client := forexcalendar.NewClient(clientOpts...)
 	handle := registerClient(client)
 
 	return C.longlong(handle)

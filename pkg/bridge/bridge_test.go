@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Nosvemos/forexfactory-go/pkg/forexfactory"
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
 )
 
 func TestBridgeAtomicFiles(t *testing.T) {
@@ -19,7 +19,7 @@ func TestBridgeAtomicFiles(t *testing.T) {
 
 	b := NewBridge(BridgeConfig{
 		OutputDir: tempDir,
-		MinImpact: forexfactory.ImpactHigh,
+		MinImpact: forexcalendar.ImpactHigh,
 	})
 
 	now := time.Now().UTC()
@@ -84,13 +84,13 @@ func TestBridgeAtomicFiles(t *testing.T) {
 }
 
 func TestIsImpactEligible(t *testing.T) {
-	if !isImpactEligible(forexfactory.ImpactHigh, forexfactory.ImpactMedium) {
+	if !isImpactEligible(forexcalendar.ImpactHigh, forexcalendar.ImpactMedium) {
 		t.Errorf("Expected High impact to be eligible when target is Medium")
 	}
-	if isImpactEligible(forexfactory.ImpactLow, forexfactory.ImpactHigh) {
+	if isImpactEligible(forexcalendar.ImpactLow, forexcalendar.ImpactHigh) {
 		t.Errorf("Expected Low impact NOT to be eligible when target is High")
 	}
-	if !isImpactEligible(forexfactory.ImpactHigh, forexfactory.ImpactHigh) {
+	if !isImpactEligible(forexcalendar.ImpactHigh, forexcalendar.ImpactHigh) {
 		t.Errorf("Expected High impact to be eligible when target is High")
 	}
 }

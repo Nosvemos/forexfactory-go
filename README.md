@@ -1,191 +1,218 @@
 <div align="center">
-  <h1>forexfactory-go 🚀</h1>
-  <p><b>High-performance Go CLI, SDK, and microservice to scrape, stream, analyze, and persist Forex Factory macroeconomic events concurrently — featuring automated Cloudflare Turnstile stealth bypass.</b></p>  
+  <h1>forexcalendar-go 🚀</h1>
+  <p><b>Lightning-fast, Pure HTTP Global Economic Calendar Engine, CLI, Microservice & SDK</b></p>
   <p>
-    <a href="https://github.com/Nosvemos/forexfactory-go/actions/workflows/ci.yml"><img src="https://github.com/Nosvemos/forexfactory-go/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/Nosvemos/forexfactory-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/forexfactory-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-    <a href="https://pkg.go.dev/github.com/Nosvemos/forexfactory-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/forexfactory-go.svg" alt="Go Reference"></a>
-    <a href="https://github.com/Nosvemos/forexfactory-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/forexfactory-go" alt="Latest release"></a>
+    <a href="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/ci.yml"><img src="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+    <a href="https://pkg.go.dev/github.com/Nosvemos/forexcalendar-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/forexcalendar-go.svg" alt="Go Reference"></a>
+    <a href="https://github.com/Nosvemos/forexcalendar-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/forexcalendar-go" alt="Latest release"></a>
+    <img src="https://img.shields.io/badge/go-1.22+-00ADD8.svg" alt="Go version">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   </p>
-  <p><i>USD • EUR • GBP • JPY • AUD • CAD • CHF • NZD • CNY (Global Macroeconomic Calendar)</i></p>
 </div>
 
 ---
 
-## ⚡ Key Highlights
+## ⚡ Highlights
 
-- **High-Speed Concurrency:** Scrape 1+ years of historical economic events across multi-worker threads in seconds.
-- **Automated Cloudflare Turnstile Stealth Bypass:** Chrome TLS JA3/JA4 fingerprint matching, CDP stealth script injection (`navigator.webdriver` masking), and persistent cookie session caching.
-- **Network Resilience:** 3-tier exponential backoff retries, proxy pool rotation (`WithProxyPool`), and User-Agent rotation (`WithUserAgentPool`).
-- **Deep Event Analytics:** Event specifications scraper (`FetchEventDetail`) with 10-year historical release tables, `Deviation`, `Surprise %`, and `MarketBias` (Bullish/Bearish) calculations.
-- **Versatile Data Formats:** Export to **CSV**, **JSON**, **Apache Parquet**, and color-formatted **Excel (`.xlsx`)**.
-- **Pluggable Database SDK Drivers:** Ready-to-use persistence for **SQLite (CGO-free WAL)**, **PostgreSQL**, **ClickHouse**, and **InfluxDB**.
-- **Embedded REST & SSE Microservice:** Launch a local HTTP server (`forexfactory-go serve`) exposing RESTful JSON APIs and Server-Sent Events (SSE) live streams.
-- **MetaTrader 4 & 5 EA Bridge:** Atomic news filter synchronization (`forexfactory-go bridge`) with ready-to-use `ForexFactoryNewsFilter.mqh` C++ MQL class.
-- **Multi-Channel Alert Daemon (`ff-notifier`):** Automated notifications for **Discord**, **Slack**, **Telegram**, and custom generic HTTP webhooks.
-- **Cross-Language Python SDK:** Native CGO shared library bindings with direct **Pandas DataFrame** integration.
+- **Pure HTTP Engine (0% Cloudflare Blocks):** Direct JSON streaming with ~30ms latency, zero browser / headless dependencies, and no Cloudflare Turnstile blocks.
+- **12+ Years Historical Depth:** Download 2014 to present and future releases without subscription fees, API keys, or request caps.
+- **Ultra-High Concurrency:** Concurrent monthly chunking downloads 8–10 years (180,000+ events) in under 15 seconds.
+- **Rich Macroeconomic Fields:** `id`, `title`, `country`, `currency`, `date`, `impact`, `actual`, `forecast`, `previous`, `unit`, `indicator`, `category`, `source`, `ticker`, `deviation`, `surprise`, and `market_bias`.
+- **Multi-Format Export:** Snappy-compressed Apache Parquet, Excel (.xlsx) with color-coded styles, CSV, and JSON.
+- **Pluggable Storage Engine:** Built-in drivers for SQLite (WAL mode), PostgreSQL, ClickHouse, and InfluxDB.
+- **Embedded REST & SSE Microservice:** Launch a local microservice (`forexcalendar serve`) exposing RESTful APIs and real-time Server-Sent Events (SSE).
+- **MetaTrader 4 & 5 Bridge:** Automatic news filter sync (`forexcalendar bridge`) with ready-to-use [`ForexCalendarNewsFilter.mqh`](include/ForexCalendarNewsFilter.mqh).
+- **Real-Time Notification Daemon (`fc-notifier`):** Automated webhook alerts for Discord, Telegram, Slack, and generic webhooks.
+- **Python / Pandas CGO SDK:** Query calendar data directly into Pandas DataFrames via high-speed CGO shared bindings.
 
 ---
 
-## 🚀 Installation
+## 📦 Installation
 
 ### Pre-built Binaries
-Download ready-to-run executables for Windows, macOS, and Linux from the **[Releases page](https://github.com/Nosvemos/forexfactory-go/releases)**.
+Download ready-to-run executables for Windows, macOS, and Linux from the **[Releases](https://github.com/Nosvemos/forexcalendar-go/releases)** page.
 
-### From Source (Go 1.22+)
+### Go Install
 ```bash
-# Install CLI tools globally
-go install github.com/Nosvemos/forexfactory-go/cmd/forexfactory-go@latest
-go install github.com/Nosvemos/forexfactory-go/cmd/ff-notifier@latest
+go install github.com/Nosvemos/forexcalendar-go/cmd/forexcalendar-go@latest
+go install github.com/Nosvemos/forexcalendar-go/cmd/fc-notifier@latest
+```
 
-# Or clone and build locally
-git clone https://github.com/Nosvemos/forexfactory-go.git
-cd forexfactory-go
-go build -o forexfactory-go ./cmd/forexfactory-go
-go build -o ff-notifier ./cmd/ff-notifier
+### Build from Source
+```bash
+git clone https://github.com/Nosvemos/forexcalendar-go.git
+cd forexcalendar-go
+go build -o forexcalendar ./cmd/forexcalendar-go
 ```
 
 ---
 
-## 📖 CLI Usage & Quick Start
+## 🚀 CLI Usage
 
-### 1. Download Historical Calendar Data
-Concurrently download events across any date range into Parquet, Excel, CSV, or JSON:
+### 1. Download Historical Data (Parquet / Excel / CSV / JSON)
 ```bash
-# Export to Apache Parquet (optimized for Pandas/Polars/DuckDB)
-forexfactory-go download --start 2026-05-01 --end 2026-05-31 --format parquet --output calendar.parquet
+# Export 8 years of historical data to Apache Parquet (Snappy compressed)
+forexcalendar download --start 2017-01-01 --end 2025-01-01 --format parquet --output calendar.parquet
 
-# Export to styled & color-coded Excel (.xlsx) file
-forexfactory-go download --start 2026-05-01 --end 2026-05-31 --format xlsx --output calendar.xlsx
+# Export with Impact and Currency filters to styled Excel (.xlsx)
+forexcalendar download --start 2024-01-01 --end 2025-01-01 --currency USD,EUR --impact High --format xlsx --output calendar.xlsx
 
-# Export to CSV with local timezone conversion
-forexfactory-go download -s 2026-01-01 -e 2026-05-31 -f csv -o calendar.csv --timezone "Local" --concurrency 4
+# Export to CSV with custom concurrency and timezone
+forexcalendar download -s 2020-01-01 -e 2025-01-01 -f csv -o calendar.csv --concurrency 8 --timezone "UTC"
 ```
 
-### 2. Deep Dive Event Specs & 10-Year History
-Scrape detailed economic specifications (Source, Measures, Usual Effect, Frequency, Next Release) and historical release records for any Forex Factory event ID:
+### 2. Live Calendar Terminal Dashboard
 ```bash
-forexfactory-go event 123456
+# Display live economic calendar with real-time countdown to next high-impact release
+forexcalendar live
+
+# Poll every 30 seconds
+forexcalendar live --interval 30s --timezone "America/New_York"
 ```
 
-### 3. Launch REST API & SSE Microservice Server
-Start an embedded HTTP server exposing RESTful endpoints and real-time Server-Sent Events (SSE):
+### 3. Embedded REST & SSE Microservice
 ```bash
-forexfactory-go serve --port 8080
+forexcalendar serve --port 8080
 ```
-**Available Endpoints:**
-* `GET /health` — Server health, uptime, and system status.
-* `GET /api/v1/calendar?start=2026-05-01&end=2026-05-31&currency=USD,EUR&impact=High` — Filtered calendar events.
-* `GET /api/v1/event?id=123456` — Detailed event specs and past historical releases.
-* `GET /api/v1/live` — Current live weekly XML feed.
-* `GET /api/v1/stream` — Real-time Server-Sent Events (SSE) event stream.
-* `GET /api/v1/stats` — Microservice request volume and memory statistics.
+- **Health Check:** `GET http://localhost:8080/health`
+- **Calendar Range:** `GET http://localhost:8080/api/v1/calendar?start=2025-01-01&end=2025-01-31&currency=USD&impact=high`
+- **Live Feed:** `GET http://localhost:8080/api/v1/live`
+- **SSE Stream:** `GET http://localhost:8080/api/v1/stream`
+- **Server Stats:** `GET http://localhost:8080/api/v1/stats`
 
-### 4. MetaTrader 4 / 5 News Filter Bridge
-Synchronize atomic `ff_news_filter.json` and `ff_news_filter.csv` files into your MT4/MT5 `MQL/Files` directory for algorithmic EA news filtering:
+### 4. MetaTrader 4 / 5 EA News Filter Bridge
 ```bash
-forexfactory-go bridge --mt4-dir "C:/Users/.../AppData/Roaming/MetaQuotes/Terminal/<ID>/MQL4/Files" --min-impact High --interval 60s
+forexcalendar bridge --mt4-dir "C:/Users/.../AppData/Roaming/MetaQuotes/Terminal/<ID>/MQL4/Files" --min-impact High --interval 60s
 ```
-*Traders can drop [`include/ForexFactoryNewsFilter.mqh`](include/ForexFactoryNewsFilter.mqh) straight into their Expert Advisor to call `IsNewsRestricted(symbol, minutesBefore, minutesAfter, minImpact)`.*
+*Drop [`include/ForexCalendarNewsFilter.mqh`](include/ForexCalendarNewsFilter.mqh) into your Expert Advisor to restrict trading during high-impact news releases:*
+```cpp
+#include <ForexCalendarNewsFilter.mqh>
+CForexCalendarNewsFilter newsFilter;
 
-### 5. Ingest Directly into Local SQLite Database
-```bash
-forexfactory-go dbload --start 2026-01-01 --end 2026-05-31 --db forexfactory.db
-```
-
-### 6. Live Terminal Stream & Countdown Banner
-Stream weekly events inside an ASCII terminal table with a live countdown timer to the next upcoming high-impact release:
-```bash
-forexfactory-go live --interval 60s --timezone "America/New_York"
+void OnTick() {
+    if (newsFilter.IsNewsRestricted(_Symbol, 30, 15, "High")) {
+        Print("Trading halted due to high-impact economic news");
+        return;
+    }
+    // Execute trade logic...
+}
 ```
 
-### 7. Real-Time Multi-Channel Alert Daemon (`ff-notifier`)
-Dispatch rich notification cards to Discord, Slack, Telegram, or custom webhooks prior to high-volatility news releases:
+### 5. SQLite Database Bulk Ingestion
 ```bash
-ff-notifier --discord-webhook "https://discord.com/api/webhooks/..." \
-            --slack-webhook "https://hooks.slack.com/services/..." \
-            --telegram-token "123456789:ABCDef..." \
-            --telegram-chat "@my_alerts_channel" \
-            --generic-webhook "https://my-trading-bot.com/api/news-alert" \
-            --lead-time 15m \
-            --min-impact High
+forexcalendar dbload --start 2020-01-01 --end 2025-01-01 --db calendar.db
+```
+
+### 6. Real-Time Alert Daemon (`fc-notifier`)
+```bash
+# Discord Channel Alerts
+fc-notifier --discord-webhook "https://discord.com/api/webhooks/..." --min-impact High --lead-time 15m
+
+# Telegram Bot Alerts
+fc-notifier --telegram-token "BOT_TOKEN" --telegram-chat "CHAT_ID" --min-impact High --lead-time 15m
 ```
 
 ---
 
-## 🐍 Python Pandas SDK Wrapper
+## 🐍 Python SDK (Pandas Integration)
 
-`forexfactory-go` provides CGO shared library bindings and a lightweight Python ctypes wrapper to fetch events directly into structured **Pandas DataFrames**.
+`forexcalendar-go` provides CGO shared library bindings for direct ingestion into structured **Pandas DataFrames**.
 
-### Compile Shared Library
-- **Windows:** `go build -buildmode=c-shared -o libforexfactory.dll pkg/bindings/bindings.go`
-- **Linux/macOS:** `go build -buildmode=c-shared -o libforexfactory.so pkg/bindings/bindings.go`
+1. **Build shared library:**
+   ```bash
+   make build-dll    # Windows (libforexcalendar.dll)
+   make build-so     # Linux/macOS (libforexcalendar.so)
+   ```
 
-### Python Example
-```python
-from datetime import datetime
-from forexfactory import ForexFactoryClient
+2. **Python usage:**
+   ```python
+   from datetime import datetime
+   from python-sdk.forexcalendar import ForexCalendarClient
 
-# Initialize Go client via C-bindings
-client = ForexFactoryClient(
-    rate_limit=2,
-    concurrency=4,
-    timezone="UTC",
-    impacts=["High", "Medium"]
-)
+   client = ForexCalendarClient(
+       rate_limit=10,
+       concurrency=5,
+       timezone="UTC",
+       impacts=["High", "Medium"]
+   )
 
-# Fetch historical date range directly as a Pandas DataFrame
-df = client.fetch_range(datetime(2026, 5, 1), datetime(2026, 5, 15), as_dataframe=True)
-print(df[["date", "currency", "impact", "title", "forecast", "actual"]].head(10))
+   # Fetch historical range directly as Pandas DataFrame
+   df = client.fetch_range(
+       start_date=datetime(2020, 1, 1),
+       end_date=datetime(2025, 1, 1),
+       as_dataframe=True
+   )
 
-# Fetch live weekly feed
-live_df = client.fetch_live_feed(as_dataframe=True)
-
-# Free browser resources
-client.close()
-```
+   print(df.head())
+   df.to_parquet("calendar.parquet")
+   ```
 
 ---
 
-## 🗄️ Database Storage SDK Drivers
-
-The modular persistence layer in `pkg/storage` provides unified interfaces for enterprise analytics:
+## 💻 Go SDK Example
 
 ```go
-import "github.com/Nosvemos/forexfactory-go/pkg/storage"
+package main
 
-// 1. ClickHouse (ReplacingMergeTree Columnar Batching)
-store := storage.NewClickHouseStorage("localhost:9000", "default", "user", "password")
+import (
+	"context"
+	"fmt"
+	"time"
 
-// 2. PostgreSQL (Relational Store with Upsert Conflicts)
-store := storage.NewPostgresStorage("postgres://user:pass@localhost:5432/db?sslmode=disable")
+	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+)
 
-// 3. SQLite (Fast CGO-Free WAL Engine)
-store := storage.NewSQLiteStorage("forexfactory.db")
+func main() {
+	client := forexcalendar.NewClient(
+		forexcalendar.WithConcurrency(5),
+		forexcalendar.WithTimeLocation(time.UTC),
+	)
 
-// 4. InfluxDB (Time-Series Metrics with Flux Pivot Queries)
-store := storage.NewInfluxDBStorage("http://localhost:8086", "token", "org", "bucket")
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC)
 
-// Common Lifecycle
-_ = store.Init(ctx)
-_ = store.SaveEvents(ctx, events)
-defer store.Close()
+	events, err := client.FetchRange(context.Background(), start, end)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Fetched %d events in range\n", len(events))
+	for _, e := range events[:5] {
+		fmt.Printf("[%s] %s | %s %s | Actual: %s, Forecast: %s\n",
+			e.Date.Format("2006-01-02 15:04"), e.Impact, e.Country, e.Title, e.Actual, e.Forecast)
+	}
+}
 ```
 
 ---
 
-## 🛡️ Anti-Bot & Network Architecture
+## 🗄️ Pluggable Database Storage Drivers
 
-1. **CDP Stealth Script Injection:** Injects JavaScript before document evaluation via Chrome DevTools Protocol to override `navigator.webdriver`, mock `window.chrome`, and normalize plugins/languages.
-2. **TLS ClientHello Spoofing:** Mimics official Chrome JA3/JA4 TLS fingerprints and HTTP/2 settings using `imroc/req/v3`.
-3. **Session Cache Persistence:** Saves resolved `cf_clearance` and timezone cookies into `session.json` (`os.UserCacheDir()`) to avoid launching browser processes on repeat runs.
-4. **Exponential Backoff & Network Recovery:** 3-tier automatic retry loop with exponential delay for connection drops, timeouts, or 5xx server errors.
-5. **Proxy & User-Agent Pools:** Thread-safe round-robin rotation via `WithProxyPool` and `WithUserAgentPool`.
-6. **Automatic Headed Fallback:** If background headless execution is challenged, the client briefly falls back to headed mode to solve Turnstile automatically and returns to headless mode.
+```go
+import (
+	"context"
+	"github.com/Nosvemos/forexcalendar-go/pkg/storage"
+)
+
+// SQLite
+store := storage.NewSQLiteStorage("calendar.db")
+
+// PostgreSQL
+store := storage.NewPostgresStorage("postgres://user:pass@localhost:5432/economic_db?sslmode=disable")
+
+// ClickHouse
+store := storage.NewClickHouseStorage("localhost:9000", "default", "default", "")
+
+// InfluxDB
+store := storage.NewInfluxDBStorage("http://localhost:8086", "TOKEN", "ORG", "BUCKET")
+
+_ = store.Init(context.Background())
+_ = store.SaveEvents(context.Background(), events)
+```
 
 ---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
