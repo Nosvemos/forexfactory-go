@@ -1,14 +1,14 @@
 from datetime import datetime
-from forexcalendar import ForexCalendarClient
+from tradingview_calendar import TradingViewCalendarClient
 
 def main():
-    print("=========================================================")
-    print("  FOREX CALENDAR GO SDK - PYTHON DIRECT PANDAS INTEGRATION")
-    print("=========================================================")
+    print("================================================================")
+    print("  TRADINGVIEW CALENDAR GO SDK - PYTHON DIRECT PANDAS INTEGRATION")
+    print("================================================================")
     
     try:
-        # Initialize client (will auto-detect compiled libforexcalendar.dll / .so)
-        client = ForexCalendarClient(
+        # Initialize client (will auto-detect compiled libtvcalendar.dll / .so)
+        client = TradingViewCalendarClient(
             rate_limit=10,
             concurrency=5,
             timezone="UTC",

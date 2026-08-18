@@ -11,16 +11,16 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 var (
-	clientRegistry = make(map[int64]*forexcalendar.Client)
+	clientRegistry = make(map[int64]*tvcalendar.Client)
 	registryMu     sync.Mutex
 	nextHandle     int64 = 1
 )
 
-func registerClient(c *forexcalendar.Client) int64 {
+func registerClient(c *tvcalendar.Client) int64 {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	h := nextHandle
@@ -29,7 +29,7 @@ func registerClient(c *forexcalendar.Client) int64 {
 	return h
 }
 
-func getClient(h int64) *forexcalendar.Client {
+func getClient(h int64) *tvcalendar.Client {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	return clientRegistry[h]
@@ -72,40 +72,40 @@ func InitClient(optsJSON *C.char) C.longlong {
 		_ = json.Unmarshal([]byte(goStr), &opts)
 	}
 
-	var clientOpts []forexcalendar.Option
+	var clientOpts []tvcalendar.Option
 
 	if opts.UserAgent != "" {
-		clientOpts = append(clientOpts, forexcalendar.WithUserAgent(opts.UserAgent))
+		clientOpts = append(clientOpts, tvcalendar.WithUserAgent(opts.UserAgent))
 	}
 	if opts.ProxyURL != "" {
-		clientOpts = append(clientOpts, forexcalendar.WithProxy(opts.ProxyURL))
+		clientOpts = append(clientOpts, tvcalendar.WithProxy(opts.ProxyURL))
 	}
 	if opts.RateLimit > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithRateLimit(opts.RateLimit))
+		clientOpts = append(clientOpts, tvcalendar.WithRateLimit(opts.RateLimit))
 	}
 	if opts.Concurrency > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithConcurrency(opts.Concurrency))
+		clientOpts = append(clientOpts, tvcalendar.WithConcurrency(opts.Concurrency))
 	}
 	if opts.Timezone != "" {
 		if loc, err := time.LoadLocation(opts.Timezone); err == nil {
-			clientOpts = append(clientOpts, forexcalendar.WithTimeLocation(loc))
+			clientOpts = append(clientOpts, tvcalendar.WithTimeLocation(loc))
 		}
 	}
 	if len(opts.Impacts) > 0 {
-		var imps []forexcalendar.Impact
+		var imps []tvcalendar.Impact
 		for _, impStr := range opts.Impacts {
-			imps = append(imps, forexcalendar.Impact(impStr))
+			imps = append(imps, tvcalendar.Impact(impStr))
 		}
-		clientOpts = append(clientOpts, forexcalendar.WithImpactFilter(imps...))
+		clientOpts = append(clientOpts, tvcalendar.WithImpactFilter(imps...))
 	}
 	if len(opts.Currencies) > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithCurrencyFilter(opts.Currencies...))
+		clientOpts = append(clientOpts, tvcalendar.WithCurrencyFilter(opts.Currencies...))
 	}
 	if len(opts.Countries) > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithCountryFilter(opts.Countries...))
+		clientOpts = append(clientOpts, tvcalendar.WithCountryFilter(opts.Countries...))
 	}
 
-	client := forexcalendar.NewClient(clientOpts...)
+	client := tvcalendar.NewClient(clientOpts...)
 	handle := registerClient(client)
 
 	return C.longlong(handle)

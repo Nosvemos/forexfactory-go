@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 )
@@ -53,7 +53,7 @@ func (i *InfluxDBStorage) Init(ctx context.Context) error {
 }
 
 // SaveEvents writes calendar events as time-series metrics points into InfluxDB.
-func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []forexcalendar.Event) error {
+func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if i.client == nil {
 		return fmt.Errorf("influxdb client not initialized, call Init() first")
 	}
@@ -102,7 +102,7 @@ func (i *InfluxDBStorage) SaveEvents(ctx context.Context, events []forexcalendar
 }
 
 // GetEvents retrieves events falling within the specified date range.
-func (i *InfluxDBStorage) GetEvents(ctx context.Context, start, end time.Time) ([]forexcalendar.Event, error) {
+func (i *InfluxDBStorage) GetEvents(ctx context.Context, start, end time.Time) ([]tvcalendar.Event, error) {
 	fluxQuery := fmt.Sprintf(`
 		from(bucket: "%s")
 			|> range(start: %s, stop: %s)
@@ -115,7 +115,7 @@ func (i *InfluxDBStorage) GetEvents(ctx context.Context, start, end time.Time) (
 }
 
 // GetEventsByCurrency retrieves events matching a specific currency code.
-func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexcalendar.Event, error) {
+func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]tvcalendar.Event, error) {
 	cleanCurrency := strings.ToUpper(strings.TrimSpace(strings.ReplaceAll(currency, `"`, "")))
 
 	// Query historical data (last 5 years to ensure full historical coverage of currency events)
@@ -131,7 +131,7 @@ func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency stri
 }
 
 // QueryEvents retrieves events matching a set of dynamic filter criteria.
-func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]forexcalendar.Event, error) {
+func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
 	startStr := "-10y" // Default to broad historical window
 	if filter.StartDate != nil {
 		startStr = filter.StartDate.Format(time.RFC3339)
@@ -183,7 +183,7 @@ func (i *InfluxDBStorage) Close() error {
 }
 
 // executeFluxQuery executes the Flux statement and parses result points back into standard Event lists.
-func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string) ([]forexcalendar.Event, error) {
+func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string) ([]tvcalendar.Event, error) {
 	if i.client == nil {
 		return nil, fmt.Errorf("influxdb client not initialized, call Init() first")
 	}
@@ -194,19 +194,19 @@ func (i *InfluxDBStorage) executeFluxQuery(ctx context.Context, fluxQuery string
 	}
 	defer result.Close()
 
-	var events []forexcalendar.Event
+	var events []tvcalendar.Event
 
 	for result.Next() {
 		record := result.Record()
 
-		var e forexcalendar.Event
+		var e tvcalendar.Event
 
 		// Map tags safely
 		if curVal, ok := record.ValueByKey("currency").(string); ok {
 			e.Currency = curVal
 		}
 		if impVal, ok := record.ValueByKey("impact").(string); ok {
-			e.Impact = forexcalendar.Impact(impVal)
+			e.Impact = tvcalendar.Impact(impVal)
 		}
 
 		allDayStr, _ := record.ValueByKey("is_all_day").(string)

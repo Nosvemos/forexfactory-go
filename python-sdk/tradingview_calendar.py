@@ -11,9 +11,9 @@ except ImportError:
     HAS_PANDAS = False
 
 
-class ForexCalendarClient:
+class TradingViewCalendarClient:
     """
-    ForexCalendarClient wraps the high-performance Go forexcalendar-go library
+    TradingViewCalendarClient wraps the high-performance Go tradingview-calendar-go library
     using ctypes C-bindings, providing sub-second historical range downloads and live trackers
     directly to Python and Pandas workflows.
     """
@@ -22,8 +22,8 @@ class ForexCalendarClient:
         """
         Initializes the client.
         
-        :param dll_path: Path to libforexcalendar.dll / libforexcalendar.so. 
-                         If None, searches the current directory and parent directory.
+        :param dll_path: Path to libtvcalendar.dll / libtvcalendar.so. 
+                         If None, searches current directory and parent directory.
         :param user_agent: Custom User-Agent string.
         :param proxy_url: Custom Proxy URL (HTTP/SOCKS5).
         :param rate_limit: Max requests per second.
@@ -36,18 +36,18 @@ class ForexCalendarClient:
         if dll_path is None:
             system = platform.system().lower()
             if system == 'windows':
-                lib_name = 'libforexcalendar.dll'
+                lib_name = 'libtvcalendar.dll'
             elif system == 'darwin':
-                lib_name = 'libforexcalendar.dylib'
+                lib_name = 'libtvcalendar.dylib'
             else:
-                lib_name = 'libforexcalendar.so'
+                lib_name = 'libtvcalendar.so'
             
             search_paths = [
                 os.path.join(os.getcwd(), lib_name),
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', lib_name),
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), lib_name),
-                os.path.join(os.getcwd(), 'libforexfactory.dll'),
-                os.path.join(os.getcwd(), 'libforexfactory.so'),
+                os.path.join(os.getcwd(), 'libforexcalendar.dll'),
+                os.path.join(os.getcwd(), 'libforexcalendar.so'),
             ]
             
             for path in search_paths:
@@ -96,7 +96,7 @@ class ForexCalendarClient:
         config_bytes = json.dumps(config).encode('utf-8')
         self.handle = self.lib.InitClient(config_bytes)
         if self.handle <= 0:
-            raise RuntimeError("Failed to initialize Go ForexCalendar Client via CGO bindings.")
+            raise RuntimeError("Failed to initialize Go TradingView Calendar Client via CGO bindings.")
 
     def _to_dataframe_or_list(self, data, as_dataframe: bool):
         if as_dataframe:

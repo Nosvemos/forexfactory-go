@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	_ "github.com/lib/pq"
 )
 
@@ -67,7 +67,7 @@ func (p *PostgresStorage) Init(ctx context.Context) error {
 }
 
 // SaveEvents bulk saves or updates calendar events inside PostgreSQL using a fast single transaction.
-func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexcalendar.Event) error {
+func (p *PostgresStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if p.db == nil {
 		return fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -135,7 +135,7 @@ func (p *PostgresStorage) SaveEvents(ctx context.Context, events []forexcalendar
 }
 
 // GetEvents retrieves events falling within the specified date range.
-func (p *PostgresStorage) GetEvents(ctx context.Context, start, end time.Time) ([]forexcalendar.Event, error) {
+func (p *PostgresStorage) GetEvents(ctx context.Context, start, end time.Time) ([]tvcalendar.Event, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -155,7 +155,7 @@ func (p *PostgresStorage) GetEvents(ctx context.Context, start, end time.Time) (
 }
 
 // GetEventsByCurrency retrieves events matching a specific currency code.
-func (p *PostgresStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexcalendar.Event, error) {
+func (p *PostgresStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]tvcalendar.Event, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -175,7 +175,7 @@ func (p *PostgresStorage) GetEventsByCurrency(ctx context.Context, currency stri
 }
 
 // QueryEvents retrieves events matching a dynamic filter payload (date range, countries, and impacts).
-func (p *PostgresStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]forexcalendar.Event, error) {
+func (p *PostgresStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
 	if p.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -238,11 +238,11 @@ func (p *PostgresStorage) Close() error {
 }
 
 // scanEvents is a helper function that reads postgres rows into Event structs.
-func (p *PostgresStorage) scanEvents(rows *sql.Rows) ([]forexcalendar.Event, error) {
-	var events []forexcalendar.Event
+func (p *PostgresStorage) scanEvents(rows *sql.Rows) ([]tvcalendar.Event, error) {
+	var events []tvcalendar.Event
 
 	for rows.Next() {
-		var e forexcalendar.Event
+		var e tvcalendar.Event
 		var impactStr string
 
 		err := rows.Scan(
@@ -261,7 +261,7 @@ func (p *PostgresStorage) scanEvents(rows *sql.Rows) ([]forexcalendar.Event, err
 			return nil, fmt.Errorf("failed to scan postgres row: %w", err)
 		}
 
-		e.Impact = forexcalendar.Impact(impactStr)
+		e.Impact = tvcalendar.Impact(impactStr)
 		events = append(events, e)
 	}
 

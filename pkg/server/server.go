@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 // Config holds configuration for the HTTP API server.
@@ -23,7 +23,7 @@ type Config struct {
 
 // Server provides a high-performance REST API and SSE streaming microservice for global economic calendar data.
 type Server struct {
-	client     *forexcalendar.Client
+	client     *tvcalendar.Client
 	server     *http.Server
 	startTime  time.Time
 	reqCount   uint64
@@ -40,16 +40,16 @@ func NewServer(cfg Config) *Server {
 		cfg.Addr = ":8080"
 	}
 
-	var clientOpts []forexcalendar.Option
+	var clientOpts []tvcalendar.Option
 	if cfg.RateLimit > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithRateLimit(cfg.RateLimit))
+		clientOpts = append(clientOpts, tvcalendar.WithRateLimit(cfg.RateLimit))
 	}
 	if cfg.Concurrency > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithConcurrency(cfg.Concurrency))
+		clientOpts = append(clientOpts, tvcalendar.WithConcurrency(cfg.Concurrency))
 	}
 
 	s := &Server{
-		client:     forexcalendar.NewClient(clientOpts...),
+		client:     tvcalendar.NewClient(clientOpts...),
 		startTime:  time.Now(),
 		sseClients: make(map[chan []byte]bool),
 	}
@@ -193,7 +193,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var filtered []forexcalendar.Event
+	var filtered []tvcalendar.Event
 	for _, e := range events {
 		if targetCurrencies != nil && !targetCurrencies[strings.ToUpper(e.Currency)] {
 			continue

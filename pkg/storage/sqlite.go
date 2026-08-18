@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	_ "modernc.org/sqlite"
 )
 
@@ -72,7 +72,7 @@ func (s *SQLiteStorage) Init(ctx context.Context) error {
 }
 
 // SaveEvents bulk saves or updates calendar events inside SQLite using high-speed transactions.
-func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []forexcalendar.Event) error {
+func (s *SQLiteStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if s.db == nil {
 		return fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -145,7 +145,7 @@ func (s *SQLiteStorage) Close() error {
 }
 
 // GetEvents retrieves events falling within the specified date range (inclusive of start/end days).
-func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]forexcalendar.Event, error) {
+func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]tvcalendar.Event, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -169,7 +169,7 @@ func (s *SQLiteStorage) GetEvents(ctx context.Context, start, end time.Time) ([]
 }
 
 // GetEventsByCurrency retrieves events matching a specific currency code.
-func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexcalendar.Event, error) {
+func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]tvcalendar.Event, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -189,7 +189,7 @@ func (s *SQLiteStorage) GetEventsByCurrency(ctx context.Context, currency string
 }
 
 // QueryEvents retrieves events matching a dynamic filter payload (date range, countries, and impacts).
-func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]forexcalendar.Event, error) {
+func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not initialized, call Init() first")
 	}
@@ -240,11 +240,11 @@ func (s *SQLiteStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]
 }
 
 // scanEvents is a helper function that reads database rows into Event structs.
-func scanEvents(rows *sql.Rows) ([]forexcalendar.Event, error) {
-	var events []forexcalendar.Event
+func scanEvents(rows *sql.Rows) ([]tvcalendar.Event, error) {
+	var events []tvcalendar.Event
 
 	for rows.Next() {
-		var e forexcalendar.Event
+		var e tvcalendar.Event
 		var dateStr string
 		var impactStr string
 		var allDayVal, tentativeVal int
@@ -274,7 +274,7 @@ func scanEvents(rows *sql.Rows) ([]forexcalendar.Event, error) {
 		e.Date = parsedTime
 
 		// Map Impact
-		e.Impact = forexcalendar.Impact(impactStr)
+		e.Impact = tvcalendar.Impact(impactStr)
 
 		// Map boolean flags
 		e.IsAllDay = allDayVal == 1

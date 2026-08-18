@@ -1,4 +1,4 @@
-module github.com/Nosvemos/forexcalendar-go
+module github.com/Nosvemos/tradingview-calendar-go
 
 go 1.26
 

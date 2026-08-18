@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
-//|                                    ForexCalendarNewsFilter.mqh   |
-//|                        Copyright 2026, forexcalendar-go OpenSource|
-//|                    https://github.com/Nosvemos/forexcalendar-go  |
+//|                                    TradingViewNewsFilter.mqh     |
+//|                    Copyright 2026, tradingview-calendar-go       |
+//|                https://github.com/Nosvemos/tradingview-calendar-go|
 //+------------------------------------------------------------------+
-#property copyright "ForexCalendar-Go"
-#property link      "https://github.com/Nosvemos/forexcalendar-go"
+#property copyright "TradingView-Calendar-Go"
+#property link      "https://github.com/Nosvemos/tradingview-calendar-go"
 #property strict
 
 //+------------------------------------------------------------------+
 //| Struct representing an incoming economic event parsed from CSV   |
 //+------------------------------------------------------------------+
-struct FCNewsEvent
+struct TVNewsEvent
 {
    string currency;
    int    minutesLeft;
@@ -22,16 +22,16 @@ struct FCNewsEvent
 };
 
 //+------------------------------------------------------------------+
-//| ForexCalendarNewsFilter Class                                    |
+//| TradingViewNewsFilter Class                                      |
 //+------------------------------------------------------------------+
-class CForexCalendarNewsFilter
+class CTradingViewNewsFilter
 {
 private:
    string m_fileName;
    datetime m_lastReadTime;
 
 public:
-   CForexCalendarNewsFilter(string fileName = "ff_news_filter.csv")
+   CTradingViewNewsFilter(string fileName = "ff_news_filter.csv")
    {
       m_fileName = fileName;
       m_lastReadTime = 0;
@@ -43,7 +43,7 @@ public:
       int fileHandle = FileOpen(m_fileName, FILE_READ|FILE_CSV|FILE_ANSI, ',');
       if(fileHandle == INVALID_HANDLE)
       {
-         Print("[FC-NewsFilter] Notice: Unable to open ", m_fileName, " in Terminal MQL Files directory.");
+         Print("[TV-NewsFilter] Notice: Unable to open ", m_fileName, " in Terminal MQL Files directory.");
          return false;
       }
 
@@ -79,7 +79,7 @@ public:
                // If event is upcoming within minutesBefore (e.g. within 30 min)
                if(minutesLeft >= 0 && minutesLeft <= minutesBefore)
                {
-                  Print("[FC-NewsFilter] Trading Restricted: Upcoming news on ", curr, " (", title, ") in ", minutesLeft, " min.");
+                  Print("[TV-NewsFilter] Trading Restricted: Upcoming news on ", curr, " (", title, ") in ", minutesLeft, " min.");
                   FileClose(fileHandle);
                   return true;
                }
@@ -87,7 +87,7 @@ public:
                // If event passed recently within minutesAfter (e.g. 15 min after)
                if(minutesLeft < 0 && MathAbs(minutesLeft) <= minutesAfter)
                {
-                  Print("[FC-NewsFilter] Trading Restricted: Post-news cooldown on ", curr, " (", title, ") passed ", MathAbs(minutesLeft), " min ago.");
+                  Print("[TV-NewsFilter] Trading Restricted: Post-news cooldown on ", curr, " (", title, ") passed ", MathAbs(minutesLeft), " min ago.");
                   FileClose(fileHandle);
                   return true;
                }

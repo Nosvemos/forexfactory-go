@@ -9,7 +9,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 // ClickHouseStorage implements the Storage SDK interface for ClickHouse columnar databases.
@@ -84,7 +84,7 @@ func (c *ClickHouseStorage) Init(ctx context.Context) error {
 }
 
 // SaveEvents executes a high-speed columnar batch insertion into ClickHouse.
-func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []forexcalendar.Event) error {
+func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []tvcalendar.Event) error {
 	if c.conn == nil {
 		return fmt.Errorf("clickhouse connection not initialized, call Init() first")
 	}
@@ -139,7 +139,7 @@ func (c *ClickHouseStorage) SaveEvents(ctx context.Context, events []forexcalend
 }
 
 // GetEvents retrieves events falling within the specified date range.
-func (c *ClickHouseStorage) GetEvents(ctx context.Context, start, end time.Time) ([]forexcalendar.Event, error) {
+func (c *ClickHouseStorage) GetEvents(ctx context.Context, start, end time.Time) ([]tvcalendar.Event, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("clickhouse connection not initialized, call Init() first")
 	}
@@ -161,7 +161,7 @@ func (c *ClickHouseStorage) GetEvents(ctx context.Context, start, end time.Time)
 }
 
 // GetEventsByCurrency retrieves events matching a specific currency code.
-func (c *ClickHouseStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]forexcalendar.Event, error) {
+func (c *ClickHouseStorage) GetEventsByCurrency(ctx context.Context, currency string) ([]tvcalendar.Event, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("clickhouse connection not initialized, call Init() first")
 	}
@@ -183,7 +183,7 @@ func (c *ClickHouseStorage) GetEventsByCurrency(ctx context.Context, currency st
 }
 
 // QueryEvents retrieves events matching a set of dynamic filter criteria.
-func (c *ClickHouseStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]forexcalendar.Event, error) {
+func (c *ClickHouseStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("clickhouse connection not initialized, call Init() first")
 	}
@@ -241,11 +241,11 @@ func (c *ClickHouseStorage) Close() error {
 }
 
 // scanEvents is a helper function that reads ClickHouse rows into Event structs.
-func (c *ClickHouseStorage) scanEvents(rows driver.Rows) ([]forexcalendar.Event, error) {
-	var events []forexcalendar.Event
+func (c *ClickHouseStorage) scanEvents(rows driver.Rows) ([]tvcalendar.Event, error) {
+	var events []tvcalendar.Event
 
 	for rows.Next() {
-		var e forexcalendar.Event
+		var e tvcalendar.Event
 		var dateVal time.Time
 		var impactStr string
 		var allDayVal, tentativeVal uint8
@@ -267,7 +267,7 @@ func (c *ClickHouseStorage) scanEvents(rows driver.Rows) ([]forexcalendar.Event,
 		}
 
 		e.Date = dateVal
-		e.Impact = forexcalendar.Impact(impactStr)
+		e.Impact = tvcalendar.Impact(impactStr)
 		e.IsAllDay = allDayVal == 1
 		e.IsTentative = tentativeVal == 1
 

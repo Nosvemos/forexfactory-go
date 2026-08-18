@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/bridge"
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
-	"github.com/Nosvemos/forexcalendar-go/pkg/server"
-	"github.com/Nosvemos/forexcalendar-go/pkg/storage"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/bridge"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/server"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/storage"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -53,9 +53,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "forexcalendar-go",
-	Short: "Lightning-fast, Pure HTTP Global Economic Calendar CLI and Microservice",
-	Long: `forexcalendar-go is a high-performance Go CLI and library designed to fetch, 
+	Use:   "tvcalendar",
+	Short: "Lightning-fast, Pure HTTP TradingView Economic Calendar CLI and Microservice",
+	Long: `tradingview-calendar-go is a high-performance Go CLI and library designed to fetch, 
 stream, and analyze global macroeconomic calendar data (12+ years history, 0 Cloudflare blocks, pure HTTP).`,
 }
 
@@ -109,7 +109,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the application version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("forexcalendar-go version 3.0.0 (Pure HTTP, 12+ Year Historical Depth)")
+		fmt.Println("tradingview-calendar-go version 3.0.0 (Pure HTTP, 12+ Year Historical Depth)")
 	},
 }
 
@@ -145,7 +145,7 @@ func init() {
 	// DBLoad flags
 	dbloadCmd.Flags().StringVarP(&startFlag, "start", "s", "", "Start date in YYYY-MM-DD format (Required)")
 	dbloadCmd.Flags().StringVarP(&endFlag, "end", "e", "", "End date in YYYY-MM-DD format (Required)")
-	dbloadCmd.Flags().StringVar(&dbFlag, "db", "forexcalendar.db", "Target SQLite database file path")
+	dbloadCmd.Flags().StringVar(&dbFlag, "db", "tvcalendar.db", "Target SQLite database file path")
 	dbloadCmd.Flags().StringVarP(&timezoneFlag, "timezone", "t", "", "Target timezone for events")
 	dbloadCmd.Flags().IntVarP(&rateLimitFlag, "rate-limit", "r", 10, "Maximum HTTP requests per second allowed")
 	dbloadCmd.Flags().IntVarP(&concurrencyFlag, "concurrency", "c", 5, "Number of concurrent downloading worker threads")
@@ -172,19 +172,19 @@ func main() {
 	}
 }
 
-func parseFilters() ([]forexcalendar.Impact, []string, []string) {
-	var impacts []forexcalendar.Impact
+func parseFilters() ([]tvcalendar.Impact, []string, []string) {
+	var impacts []tvcalendar.Impact
 	if impactsFlag != "" {
 		for _, imp := range strings.Split(impactsFlag, ",") {
 			switch strings.ToLower(strings.TrimSpace(imp)) {
 			case "high":
-				impacts = append(impacts, forexcalendar.ImpactHigh)
+				impacts = append(impacts, tvcalendar.ImpactHigh)
 			case "medium":
-				impacts = append(impacts, forexcalendar.ImpactMedium)
+				impacts = append(impacts, tvcalendar.ImpactMedium)
 			case "low":
-				impacts = append(impacts, forexcalendar.ImpactLow)
+				impacts = append(impacts, tvcalendar.ImpactLow)
 			case "none":
-				impacts = append(impacts, forexcalendar.ImpactNone)
+				impacts = append(impacts, tvcalendar.ImpactNone)
 			}
 		}
 	}
@@ -210,33 +210,33 @@ func parseFilters() ([]forexcalendar.Impact, []string, []string) {
 	return impacts, currencies, countries
 }
 
-func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Location) []forexcalendar.Event {
-	var clientOpts []forexcalendar.Option
+func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Location) []tvcalendar.Event {
+	var clientOpts []tvcalendar.Option
 
 	if timezoneFlag != "" && targetLoc != nil {
-		clientOpts = append(clientOpts, forexcalendar.WithTimeLocation(targetLoc))
+		clientOpts = append(clientOpts, tvcalendar.WithTimeLocation(targetLoc))
 	}
 	if rateLimitFlag > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithRateLimit(rateLimitFlag))
+		clientOpts = append(clientOpts, tvcalendar.WithRateLimit(rateLimitFlag))
 	}
 	if concurrencyFlag > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithConcurrency(concurrencyFlag))
+		clientOpts = append(clientOpts, tvcalendar.WithConcurrency(concurrencyFlag))
 	}
 
 	impacts, currencies, countries := parseFilters()
 	if len(impacts) > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithImpactFilter(impacts...))
+		clientOpts = append(clientOpts, tvcalendar.WithImpactFilter(impacts...))
 	}
 	if len(currencies) > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithCurrencyFilter(currencies...))
+		clientOpts = append(clientOpts, tvcalendar.WithCurrencyFilter(currencies...))
 	}
 	if len(countries) > 0 {
-		clientOpts = append(clientOpts, forexcalendar.WithCountryFilter(countries...))
+		clientOpts = append(clientOpts, tvcalendar.WithCountryFilter(countries...))
 	}
 
 	if !silentFlag {
 		fmt.Fprintf(os.Stderr, "Downloading calendar data via %d concurrent workers...\n", concurrencyFlag)
-		clientOpts = append(clientOpts, forexcalendar.WithProgressCallback(func(current, total int) {
+		clientOpts = append(clientOpts, tvcalendar.WithProgressCallback(func(current, total int) {
 			if total <= 0 {
 				return
 			}
@@ -248,7 +248,7 @@ func fetchEventsConcurrently(startDate, endDate time.Time, targetLoc *time.Locat
 		}))
 	}
 
-	client := forexcalendar.NewClient(clientOpts...)
+	client := tvcalendar.NewClient(clientOpts...)
 	defer client.Close()
 
 	events, err := client.FetchRange(context.Background(), startDate, endDate)
@@ -295,7 +295,7 @@ func executeDownload() {
 		if outputFlag == "" {
 			log.Fatalf("Error: --output file path is required when exporting to parquet format")
 		}
-		if err := forexcalendar.WriteParquet(outputFlag, filteredEvents); err != nil {
+		if err := tvcalendar.WriteParquet(outputFlag, filteredEvents); err != nil {
 			log.Fatalf("Error writing Parquet: %v", err)
 		}
 		if !silentFlag {
@@ -308,7 +308,7 @@ func executeDownload() {
 		if outputFlag == "" {
 			log.Fatalf("Error: --output file path is required when exporting to xlsx format")
 		}
-		if err := forexcalendar.WriteExcel(filteredEvents, outputFlag); err != nil {
+		if err := tvcalendar.WriteExcel(filteredEvents, outputFlag); err != nil {
 			log.Fatalf("Error writing Excel: %v", err)
 		}
 		if !silentFlag {
@@ -352,7 +352,7 @@ func executeServe() {
 	}
 
 	fmt.Printf("\033[1;36m================================================================================\033[0m\n")
-	fmt.Printf("\033[1;32m  FOREXCALENDAR-GO REST & SSE MICROSERVICE SERVER\033[0m\n")
+	fmt.Printf("\033[1;32m  TRADINGVIEW-CALENDAR REST & SSE MICROSERVICE SERVER\033[0m\n")
 	fmt.Printf("\033[1;36m================================================================================\033[0m\n")
 	fmt.Printf("  • Listening on        : http://localhost%s\n", addr)
 	fmt.Printf("  • Health Check        : GET  http://localhost%s/health\n", addr)
@@ -384,16 +384,16 @@ func executeBridge() {
 		}
 	}
 
-	imp := forexcalendar.ImpactHigh
+	imp := tvcalendar.ImpactHigh
 	switch strings.ToLower(minImpactFlag) {
 	case "medium":
-		imp = forexcalendar.ImpactMedium
+		imp = tvcalendar.ImpactMedium
 	case "low":
-		imp = forexcalendar.ImpactLow
+		imp = tvcalendar.ImpactLow
 	}
 
 	fmt.Printf("\033[1;36m================================================================================\033[0m\n")
-	fmt.Printf("\033[1;32m  FOREXCALENDAR-GO METATRADER 4 / 5 NEWS FILTER BRIDGE\033[0m\n")
+	fmt.Printf("\033[1;32m  TRADINGVIEW-CALENDAR METATRADER 4 / 5 NEWS FILTER BRIDGE\033[0m\n")
 	fmt.Printf("\033[1;36m================================================================================\033[0m\n")
 	fmt.Printf("  • Target Directory    : %s\n", mt4DirFlag)
 	fmt.Printf("  • Minimum Impact      : %s\n", imp)
@@ -471,8 +471,8 @@ func executeLive() {
 		}
 	}
 
-	client := forexcalendar.NewClient(
-		forexcalendar.WithTimeLocation(targetLoc),
+	client := tvcalendar.NewClient(
+		tvcalendar.WithTimeLocation(targetLoc),
 	)
 
 	if intervalFlag <= 0 {
@@ -492,7 +492,7 @@ func executeLive() {
 	}
 }
 
-func fetchAndPrintLive(client *forexcalendar.Client) {
+func fetchAndPrintLive(client *tvcalendar.Client) {
 	events, err := client.FetchLiveFeed(context.Background())
 	if err != nil {
 		log.Printf("Error: failed to fetch live feed: %v\n", err)
@@ -506,11 +506,11 @@ func fetchAndPrintLive(client *forexcalendar.Client) {
 	}
 
 	now := time.Now().UTC()
-	var nextUpcoming *forexcalendar.Event
+	var nextUpcoming *tvcalendar.Event
 	var shortestDiff time.Duration
 
 	for _, e := range events {
-		if e.Impact == forexcalendar.ImpactHigh || e.Impact == forexcalendar.ImpactMedium {
+		if e.Impact == tvcalendar.ImpactHigh || e.Impact == tvcalendar.ImpactMedium {
 			diff := e.Date.UTC().Sub(now)
 			if diff > 0 {
 				if nextUpcoming == nil || diff < shortestDiff {
@@ -523,14 +523,14 @@ func fetchAndPrintLive(client *forexcalendar.Client) {
 	}
 
 	fmt.Println()
-	fmt.Printf("\033[1;36m=== FOREX CALENDAR LIVE ECONOMIC FEED (%s) ===\033[0m\n", tzName)
+	fmt.Printf("\033[1;36m=== TRADINGVIEW ECONOMIC CALENDAR LIVE FEED (%s) ===\033[0m\n", tzName)
 
 	if nextUpcoming != nil {
 		hours := int(shortestDiff.Hours())
 		mins := int(shortestDiff.Minutes()) % 60
 		secs := int(shortestDiff.Seconds()) % 60
 		emoji := "🔴"
-		if nextUpcoming.Impact == forexcalendar.ImpactMedium {
+		if nextUpcoming.Impact == tvcalendar.ImpactMedium {
 			emoji = "🟡"
 		}
 		fmt.Printf("\033[1;33m  ⏳ NEXT EVENT:\033[0m %s \033[1m[%s]\033[0m \033[1;37m%s\033[0m in \033[1;31m%02dh %02dm %02ds\033[0m (at %s)\n",
@@ -562,13 +562,13 @@ func fetchAndPrintLive(client *forexcalendar.Client) {
 		var impactStr string
 		var impactColor tablewriter.Colors
 		switch e.Impact {
-		case forexcalendar.ImpactHigh:
+		case tvcalendar.ImpactHigh:
 			impactStr = "🔴 HIGH"
 			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgRedColor}
-		case forexcalendar.ImpactMedium:
+		case tvcalendar.ImpactMedium:
 			impactStr = "🟡 MEDIUM"
 			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgYellowColor}
-		case forexcalendar.ImpactLow:
+		case tvcalendar.ImpactLow:
 			impactStr = "🟢 LOW"
 			impactColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgGreenColor}
 		default:
@@ -591,8 +591,8 @@ func fetchAndPrintLive(client *forexcalendar.Client) {
 
 		actColor := tablewriter.Colors{}
 		if act != "-" && forc != "-" {
-			actualVal, err1 := forexcalendar.ParseFloat(act)
-			forecastVal, err2 := forexcalendar.ParseFloat(forc)
+			actualVal, err1 := tvcalendar.ParseFloat(act)
+			forecastVal, err2 := tvcalendar.ParseFloat(forc)
 			if err1 == nil && err2 == nil {
 				if actualVal > forecastVal {
 					actColor = tablewriter.Colors{tablewriter.Bold, tablewriter.FgGreenColor}
@@ -627,7 +627,7 @@ func fetchAndPrintLive(client *forexcalendar.Client) {
 	fmt.Println()
 }
 
-func writeCSV(w io.Writer, events []forexcalendar.Event) error {
+func writeCSV(w io.Writer, events []tvcalendar.Event) error {
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
@@ -659,7 +659,7 @@ func writeCSV(w io.Writer, events []forexcalendar.Event) error {
 	return nil
 }
 
-func writeJSON(w io.Writer, events []forexcalendar.Event) error {
+func writeJSON(w io.Writer, events []tvcalendar.Event) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(events)

@@ -6,14 +6,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func main() {
 	// 1. Initialize Client
-	client := forexcalendar.NewClient(
-		forexcalendar.WithRateLimit(10),
-		forexcalendar.WithTimeLocation(time.Local),
+	client := tvcalendar.NewClient(
+		tvcalendar.WithRateLimit(10),
+		tvcalendar.WithTimeLocation(time.Local),
 	)
 
 	// 2. Specify target date

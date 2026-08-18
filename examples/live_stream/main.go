@@ -6,12 +6,12 @@ import (
 	"log"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func main() {
-	client := forexcalendar.NewClient(
-		forexcalendar.WithTimeLocation(time.UTC),
+	client := tvcalendar.NewClient(
+		tvcalendar.WithTimeLocation(time.UTC),
 	)
 
 	fmt.Println("Starting real-time economic calendar tracker (Press Ctrl+C to exit)...")
@@ -28,7 +28,7 @@ func main() {
 	}
 }
 
-func updateLiveFeed(client *forexcalendar.Client) {
+func updateLiveFeed(client *tvcalendar.Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -41,7 +41,7 @@ func updateLiveFeed(client *forexcalendar.Client) {
 	fmt.Printf("Fetched %d current week events from live feed:\n", len(events))
 	count := 0
 	for _, e := range events {
-		if e.Impact == forexcalendar.ImpactHigh {
+		if e.Impact == tvcalendar.ImpactHigh {
 			timeStr := e.Date.Format("2006-01-02 15:04 UTC")
 			fmt.Printf("🔴 [%s] %-2s | %-3s | %s\n", timeStr, e.Country, e.Currency, e.Title)
 			if e.Actual != "" || e.Forecast != "" {

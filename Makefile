@@ -3,17 +3,17 @@
 all: build
 
 build:
-	go build -o forexcalendar ./cmd/forexcalendar-go
-	go build -o fc-notifier ./cmd/fc-notifier
+	go build -o tvcalendar ./cmd/tvcalendar
+	go build -o tv-notifier ./cmd/tv-notifier
 
 build-dll:
-	go build -buildmode=c-shared -o libforexcalendar.dll pkg/bindings/bindings.go
+	go build -buildmode=c-shared -o libtvcalendar.dll pkg/bindings/bindings.go
 
 build-so:
-	go build -buildmode=c-shared -o libforexcalendar.so pkg/bindings/bindings.go
+	go build -buildmode=c-shared -o libtvcalendar.so pkg/bindings/bindings.go
 
 test:
 	go test -v ./...
 
 clean:
-	rm -f forexcalendar forexcalendar.exe fc-notifier fc-notifier.exe libforexcalendar.dll libforexcalendar.h libforexcalendar.so
+	rm -f tvcalendar tvcalendar.exe tv-notifier tv-notifier.exe libtvcalendar.dll libtvcalendar.h libtvcalendar.so

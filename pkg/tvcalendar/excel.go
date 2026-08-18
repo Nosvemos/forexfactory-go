@@ -1,4 +1,4 @@
-package forexcalendar
+package tvcalendar
 
 import (
 	"fmt"

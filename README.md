@@ -1,11 +1,11 @@
 <div align="center">
-  <h1>forexcalendar-go 🚀</h1>
-  <p><b>Lightning-fast, Pure HTTP Global Economic Calendar Engine, CLI, Microservice & SDK</b></p>
+  <h1>tradingview-calendar-go 🚀</h1>
+  <p><b>Lightning-fast, Pure HTTP TradingView Economic Calendar Engine, CLI, Microservice & SDK</b></p>
   <p>
-    <a href="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/ci.yml"><img src="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/forexcalendar-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-    <a href="https://pkg.go.dev/github.com/Nosvemos/forexcalendar-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/forexcalendar-go.svg" alt="Go Reference"></a>
-    <a href="https://github.com/Nosvemos/forexcalendar-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/forexcalendar-go" alt="Latest release"></a>
+    <a href="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/ci.yml"><img src="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/release.yml"><img src="https://github.com/Nosvemos/tradingview-calendar-go/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+    <a href="https://pkg.go.dev/github.com/Nosvemos/tradingview-calendar-go"><img src="https://pkg.go.dev/badge/github.com/Nosvemos/tradingview-calendar-go.svg" alt="Go Reference"></a>
+    <a href="https://github.com/Nosvemos/tradingview-calendar-go/releases"><img src="https://img.shields.io/github/v/release/Nosvemos/tradingview-calendar-go" alt="Latest release"></a>
     <img src="https://img.shields.io/badge/go-1.22+-00ADD8.svg" alt="Go version">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   </p>
@@ -21,9 +21,9 @@
 - **Rich Macroeconomic Fields:** `id`, `title`, `country`, `currency`, `date`, `impact`, `actual`, `forecast`, `previous`, `unit`, `indicator`, `category`, `source`, `ticker`, `deviation`, `surprise`, and `market_bias`.
 - **Multi-Format Export:** Snappy-compressed Apache Parquet, Excel (.xlsx) with color-coded styles, CSV, and JSON.
 - **Pluggable Storage Engine:** Built-in drivers for SQLite (WAL mode), PostgreSQL, ClickHouse, and InfluxDB.
-- **Embedded REST & SSE Microservice:** Launch a local microservice (`forexcalendar serve`) exposing RESTful APIs and real-time Server-Sent Events (SSE).
-- **MetaTrader 4 & 5 Bridge:** Automatic news filter sync (`forexcalendar bridge`) with ready-to-use [`ForexCalendarNewsFilter.mqh`](include/ForexCalendarNewsFilter.mqh).
-- **Real-Time Notification Daemon (`fc-notifier`):** Automated webhook alerts for Discord, Telegram, Slack, and generic webhooks.
+- **Embedded REST & SSE Microservice:** Launch a local microservice (`tvcalendar serve`) exposing RESTful APIs and real-time Server-Sent Events (SSE).
+- **MetaTrader 4 & 5 Bridge:** Automatic news filter sync (`tvcalendar bridge`) with ready-to-use [`TradingViewNewsFilter.mqh`](include/TradingViewNewsFilter.mqh).
+- **Real-Time Notification Daemon (`tv-notifier`):** Automated webhook alerts for Discord, Telegram, Slack, and generic webhooks.
 - **Python / Pandas CGO SDK:** Query calendar data directly into Pandas DataFrames via high-speed CGO shared bindings.
 
 ---
@@ -31,19 +31,19 @@
 ## 📦 Installation
 
 ### Pre-built Binaries
-Download ready-to-run executables for Windows, macOS, and Linux from the **[Releases](https://github.com/Nosvemos/forexcalendar-go/releases)** page.
+Download ready-to-run executables for Windows, macOS, and Linux from the **[Releases](https://github.com/Nosvemos/tradingview-calendar-go/releases)** page.
 
 ### Go Install
 ```bash
-go install github.com/Nosvemos/forexcalendar-go/cmd/forexcalendar-go@latest
-go install github.com/Nosvemos/forexcalendar-go/cmd/fc-notifier@latest
+go install github.com/Nosvemos/tradingview-calendar-go/cmd/tvcalendar@latest
+go install github.com/Nosvemos/tradingview-calendar-go/cmd/tv-notifier@latest
 ```
 
 ### Build from Source
 ```bash
-git clone https://github.com/Nosvemos/forexcalendar-go.git
-cd forexcalendar-go
-go build -o forexcalendar ./cmd/forexcalendar-go
+git clone https://github.com/Nosvemos/tradingview-calendar-go.git
+cd tradingview-calendar-go
+go build -o tvcalendar ./cmd/tvcalendar
 ```
 
 ---
@@ -53,27 +53,27 @@ go build -o forexcalendar ./cmd/forexcalendar-go
 ### 1. Download Historical Data (Parquet / Excel / CSV / JSON)
 ```bash
 # Export 8 years of historical data to Apache Parquet (Snappy compressed)
-forexcalendar download --start 2017-01-01 --end 2025-01-01 --format parquet --output calendar.parquet
+tvcalendar download --start 2017-01-01 --end 2025-01-01 --format parquet --output calendar.parquet
 
 # Export with Impact and Currency filters to styled Excel (.xlsx)
-forexcalendar download --start 2024-01-01 --end 2025-01-01 --currency USD,EUR --impact High --format xlsx --output calendar.xlsx
+tvcalendar download --start 2024-01-01 --end 2025-01-01 --currency USD,EUR --impact High --format xlsx --output calendar.xlsx
 
 # Export to CSV with custom concurrency and timezone
-forexcalendar download -s 2020-01-01 -e 2025-01-01 -f csv -o calendar.csv --concurrency 8 --timezone "UTC"
+tvcalendar download -s 2020-01-01 -e 2025-01-01 -f csv -o calendar.csv --concurrency 8 --timezone "UTC"
 ```
 
 ### 2. Live Calendar Terminal Dashboard
 ```bash
 # Display live economic calendar with real-time countdown to next high-impact release
-forexcalendar live
+tvcalendar live
 
 # Poll every 30 seconds
-forexcalendar live --interval 30s --timezone "America/New_York"
+tvcalendar live --interval 30s --timezone "America/New_York"
 ```
 
 ### 3. Embedded REST & SSE Microservice
 ```bash
-forexcalendar serve --port 8080
+tvcalendar serve --port 8080
 ```
 - **Health Check:** `GET http://localhost:8080/health`
 - **Calendar Range:** `GET http://localhost:8080/api/v1/calendar?start=2025-01-01&end=2025-01-31&currency=USD&impact=high`
@@ -83,12 +83,12 @@ forexcalendar serve --port 8080
 
 ### 4. MetaTrader 4 / 5 EA News Filter Bridge
 ```bash
-forexcalendar bridge --mt4-dir "C:/Users/.../AppData/Roaming/MetaQuotes/Terminal/<ID>/MQL4/Files" --min-impact High --interval 60s
+tvcalendar bridge --mt4-dir "C:/Users/.../AppData/Roaming/MetaQuotes/Terminal/<ID>/MQL4/Files" --min-impact High --interval 60s
 ```
-*Drop [`include/ForexCalendarNewsFilter.mqh`](include/ForexCalendarNewsFilter.mqh) into your Expert Advisor to restrict trading during high-impact news releases:*
+*Drop [`include/TradingViewNewsFilter.mqh`](include/TradingViewNewsFilter.mqh) into your Expert Advisor to restrict trading during high-impact news releases:*
 ```cpp
-#include <ForexCalendarNewsFilter.mqh>
-CForexCalendarNewsFilter newsFilter;
+#include <TradingViewNewsFilter.mqh>
+CTradingViewNewsFilter newsFilter;
 
 void OnTick() {
     if (newsFilter.IsNewsRestricted(_Symbol, 30, 15, "High")) {
@@ -101,36 +101,36 @@ void OnTick() {
 
 ### 5. SQLite Database Bulk Ingestion
 ```bash
-forexcalendar dbload --start 2020-01-01 --end 2025-01-01 --db calendar.db
+tvcalendar dbload --start 2020-01-01 --end 2025-01-01 --db calendar.db
 ```
 
-### 6. Real-Time Alert Daemon (`fc-notifier`)
+### 6. Real-Time Alert Daemon (`tv-notifier`)
 ```bash
 # Discord Channel Alerts
-fc-notifier --discord-webhook "https://discord.com/api/webhooks/..." --min-impact High --lead-time 15m
+tv-notifier --discord-webhook "https://discord.com/api/webhooks/..." --min-impact High --lead-time 15m
 
 # Telegram Bot Alerts
-fc-notifier --telegram-token "BOT_TOKEN" --telegram-chat "CHAT_ID" --min-impact High --lead-time 15m
+tv-notifier --telegram-token "BOT_TOKEN" --telegram-chat "CHAT_ID" --min-impact High --lead-time 15m
 ```
 
 ---
 
 ## 🐍 Python SDK (Pandas Integration)
 
-`forexcalendar-go` provides CGO shared library bindings for direct ingestion into structured **Pandas DataFrames**.
+`tradingview-calendar-go` provides CGO shared library bindings for direct ingestion into structured **Pandas DataFrames**.
 
 1. **Build shared library:**
    ```bash
-   make build-dll    # Windows (libforexcalendar.dll)
-   make build-so     # Linux/macOS (libforexcalendar.so)
+   make build-dll    # Windows (libtvcalendar.dll)
+   make build-so     # Linux/macOS (libtvcalendar.so)
    ```
 
 2. **Python usage:**
    ```python
    from datetime import datetime
-   from python-sdk.forexcalendar import ForexCalendarClient
+   from python_sdk.tradingview_calendar import TradingViewCalendarClient
 
-   client = ForexCalendarClient(
+   client = TradingViewCalendarClient(
        rate_limit=10,
        concurrency=5,
        timezone="UTC",
@@ -160,13 +160,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func main() {
-	client := forexcalendar.NewClient(
-		forexcalendar.WithConcurrency(5),
-		forexcalendar.WithTimeLocation(time.UTC),
+	client := tvcalendar.NewClient(
+		tvcalendar.WithConcurrency(5),
+		tvcalendar.WithTimeLocation(time.UTC),
 	)
 
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -192,7 +192,7 @@ func main() {
 ```go
 import (
 	"context"
-	"github.com/Nosvemos/forexcalendar-go/pkg/storage"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/storage"
 )
 
 // SQLite

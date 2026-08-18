@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 // BridgeConfig holds parameters for syncing Forex Factory news with MT4/MT5 terminals.
 type BridgeConfig struct {
 	OutputDir   string
-	MinImpact   forexcalendar.Impact
+	MinImpact   tvcalendar.Impact
 	Interval    time.Duration
 	Timezone    *time.Location
 	Currencies  []string
@@ -48,7 +48,7 @@ type UpcomingEvent struct {
 // Bridge periodically fetches live economic events and publishes atomic news filter files for MT4/MT5.
 type Bridge struct {
 	cfg    BridgeConfig
-	client *forexcalendar.Client
+	client *tvcalendar.Client
 }
 
 // NewBridge creates a new MetaTrader news filter bridge instance.
@@ -57,18 +57,18 @@ func NewBridge(cfg BridgeConfig) *Bridge {
 		cfg.Interval = 1 * time.Minute
 	}
 	if cfg.MinImpact == "" {
-		cfg.MinImpact = forexcalendar.ImpactHigh
+		cfg.MinImpact = tvcalendar.ImpactHigh
 	}
 	if cfg.Timezone == nil {
 		cfg.Timezone = time.UTC
 	}
 
-	var clientOpts []forexcalendar.Option
-	clientOpts = append(clientOpts, forexcalendar.WithTimeLocation(cfg.Timezone))
+	var clientOpts []tvcalendar.Option
+	clientOpts = append(clientOpts, tvcalendar.WithTimeLocation(cfg.Timezone))
 
 	return &Bridge{
 		cfg:    cfg,
-		client: forexcalendar.NewClient(clientOpts...),
+		client: tvcalendar.NewClient(clientOpts...),
 	}
 }
 
@@ -220,12 +220,12 @@ func (b *Bridge) writeAtomicFiles(payload NewsFilterPayload) error {
 	return os.Rename(tmpCSVPath, csvPath)
 }
 
-func isImpactEligible(actual, target forexcalendar.Impact) bool {
-	weight := map[forexcalendar.Impact]int{
-		forexcalendar.ImpactHigh:   3,
-		forexcalendar.ImpactMedium: 2,
-		forexcalendar.ImpactLow:    1,
-		forexcalendar.ImpactNone:   0,
+func isImpactEligible(actual, target tvcalendar.Impact) bool {
+	weight := map[tvcalendar.Impact]int{
+		tvcalendar.ImpactHigh:   3,
+		tvcalendar.ImpactMedium: 2,
+		tvcalendar.ImpactLow:    1,
+		tvcalendar.ImpactNone:   0,
 	}
 	return weight[actual] >= weight[target]
 }

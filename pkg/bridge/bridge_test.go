@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func TestBridgeAtomicFiles(t *testing.T) {
@@ -19,7 +19,7 @@ func TestBridgeAtomicFiles(t *testing.T) {
 
 	b := NewBridge(BridgeConfig{
 		OutputDir: tempDir,
-		MinImpact: forexcalendar.ImpactHigh,
+		MinImpact: tvcalendar.ImpactHigh,
 	})
 
 	now := time.Now().UTC()
@@ -84,13 +84,13 @@ func TestBridgeAtomicFiles(t *testing.T) {
 }
 
 func TestIsImpactEligible(t *testing.T) {
-	if !isImpactEligible(forexcalendar.ImpactHigh, forexcalendar.ImpactMedium) {
+	if !isImpactEligible(tvcalendar.ImpactHigh, tvcalendar.ImpactMedium) {
 		t.Errorf("Expected High impact to be eligible when target is Medium")
 	}
-	if isImpactEligible(forexcalendar.ImpactLow, forexcalendar.ImpactHigh) {
+	if isImpactEligible(tvcalendar.ImpactLow, tvcalendar.ImpactHigh) {
 		t.Errorf("Expected Low impact NOT to be eligible when target is High")
 	}
-	if !isImpactEligible(forexcalendar.ImpactHigh, forexcalendar.ImpactHigh) {
+	if !isImpactEligible(tvcalendar.ImpactHigh, tvcalendar.ImpactHigh) {
 		t.Errorf("Expected High impact to be eligible when target is High")
 	}
 }

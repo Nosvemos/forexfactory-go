@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 	"github.com/spf13/cobra"
 )
 
@@ -35,9 +35,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fc-notifier",
-	Short: "fc-notifier: Real-time Discord/Slack/Telegram Economic News Alert Daemon",
-	Long: `fc-notifier is an economic calendar alert daemon that polls 
+	Use:   "tv-notifier",
+	Short: "tv-notifier: Real-time Discord/Slack/Telegram Economic News Alert Daemon",
+	Long: `tv-notifier is an economic calendar alert daemon that polls 
 the live economic feed and dispatches rich card alerts to Discord, Slack, Telegram, and generic webhooks 
 before high-impact macroeconomic news releases.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -68,16 +68,16 @@ func executeNotifier() {
 		log.Fatalf("Error: You must configure at least one notification endpoint (--discord-webhook, --telegram-token/chat, --slack-webhook, or --generic-webhook)")
 	}
 
-	minImpact := forexcalendar.ImpactHigh
+	minImpact := tvcalendar.ImpactHigh
 	switch strings.ToLower(minImpactFlag) {
 	case "medium":
-		minImpact = forexcalendar.ImpactMedium
+		minImpact = tvcalendar.ImpactMedium
 	case "low":
-		minImpact = forexcalendar.ImpactLow
+		minImpact = tvcalendar.ImpactLow
 	}
 
 	fmt.Println("\033[1;36m================================================================================\033[0m")
-	fmt.Println("\033[1;35m  FOREX CALENDAR REAL-TIME NEWS ALERTS DAEMON STARTED  \033[0m")
+	fmt.Println("\033[1;35m  TRADINGVIEW CALENDAR REAL-TIME NEWS ALERTS DAEMON STARTED  \033[0m")
 	fmt.Printf("  • Polling Interval : %v\n", pollingIntervalFlag)
 	fmt.Printf("  • Notification Lead: %v\n", leadTimeFlag)
 	fmt.Printf("  • Minimum Impact   : %s\n", minImpactFlag)
@@ -90,8 +90,8 @@ func executeNotifier() {
 	fmt.Println("\033[1;36m================================================================================\033[0m")
 	fmt.Println("Listening for upcoming high-volatility events... Press Ctrl+C to terminate.")
 
-	client := forexcalendar.NewClient(
-		forexcalendar.WithTimeLocation(time.UTC),
+	client := tvcalendar.NewClient(
+		tvcalendar.WithTimeLocation(time.UTC),
 	)
 	defer client.Close()
 
@@ -117,7 +117,7 @@ func executeNotifier() {
 	}
 }
 
-func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact) {
+func checkAndAlert(client *tvcalendar.Client, minImpact tvcalendar.Impact) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -157,7 +157,7 @@ func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact)
 			var wg sync.WaitGroup
 			if discordWebhookFlag != "" {
 				wg.Add(1)
-				go func(event forexcalendar.Event, rem int) {
+				go func(event tvcalendar.Event, rem int) {
 					defer wg.Done()
 					_ = sendDiscordAlert(event, rem)
 				}(e, minutesRemaining)
@@ -165,7 +165,7 @@ func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact)
 
 			if slackWebhookFlag != "" {
 				wg.Add(1)
-				go func(event forexcalendar.Event, rem int) {
+				go func(event tvcalendar.Event, rem int) {
 					defer wg.Done()
 					_ = sendSlackAlert(event, rem)
 				}(e, minutesRemaining)
@@ -173,7 +173,7 @@ func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact)
 
 			if genericWebhookFlag != "" {
 				wg.Add(1)
-				go func(event forexcalendar.Event, rem int) {
+				go func(event tvcalendar.Event, rem int) {
 					defer wg.Done()
 					_ = sendGenericWebhookAlert(event, rem)
 				}(e, minutesRemaining)
@@ -181,7 +181,7 @@ func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact)
 
 			if telegramTokenFlag != "" && telegramChatFlag != "" {
 				wg.Add(1)
-				go func(event forexcalendar.Event, rem int) {
+				go func(event tvcalendar.Event, rem int) {
 					defer wg.Done()
 					_ = sendTelegramAlert(event, rem)
 				}(e, minutesRemaining)
@@ -198,14 +198,14 @@ func checkAndAlert(client *forexcalendar.Client, minImpact forexcalendar.Impact)
 	}
 }
 
-func isImpactAllowed(imp forexcalendar.Impact, min forexcalendar.Impact) bool {
-	weight := func(i forexcalendar.Impact) int {
+func isImpactAllowed(imp tvcalendar.Impact, min tvcalendar.Impact) bool {
+	weight := func(i tvcalendar.Impact) int {
 		switch i {
-		case forexcalendar.ImpactHigh:
+		case tvcalendar.ImpactHigh:
 			return 3
-		case forexcalendar.ImpactMedium:
+		case tvcalendar.ImpactMedium:
 			return 2
-		case forexcalendar.ImpactLow:
+		case tvcalendar.ImpactLow:
 			return 1
 		default:
 			return 0
@@ -239,7 +239,7 @@ func getNotifierCacheFilePath() string {
 	if err != nil {
 		cacheDir = os.TempDir()
 	}
-	dir := filepath.Join(cacheDir, "forexcalendar-go")
+	dir := filepath.Join(cacheDir, "tradingview-calendar-go")
 	_ = os.MkdirAll(dir, 0700)
 	return filepath.Join(dir, "notified_cache.json")
 }
@@ -288,17 +288,17 @@ var webhookHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func sendDiscordAlert(e forexcalendar.Event, minutesLeft int) error {
+func sendDiscordAlert(e tvcalendar.Event, minutesLeft int) error {
 	color := 9807270 // Gray
 	emoji := "⚪"
 	switch e.Impact {
-	case forexcalendar.ImpactHigh:
+	case tvcalendar.ImpactHigh:
 		color = 15158332 // Red
 		emoji = "🔴"
-	case forexcalendar.ImpactMedium:
+	case tvcalendar.ImpactMedium:
 		color = 15105570 // Orange
 		emoji = "🟡"
-	case forexcalendar.ImpactLow:
+	case tvcalendar.ImpactLow:
 		color = 3066993 // Green
 		emoji = "🟢"
 	}
@@ -344,14 +344,14 @@ func sendDiscordAlert(e forexcalendar.Event, minutesLeft int) error {
 	return nil
 }
 
-func sendTelegramAlert(e forexcalendar.Event, minutesLeft int) error {
+func sendTelegramAlert(e tvcalendar.Event, minutesLeft int) error {
 	emoji := "⚪"
 	switch e.Impact {
-	case forexcalendar.ImpactHigh:
+	case tvcalendar.ImpactHigh:
 		emoji = "🔴"
-	case forexcalendar.ImpactMedium:
+	case tvcalendar.ImpactMedium:
 		emoji = "🟡"
-	case forexcalendar.ImpactLow:
+	case tvcalendar.ImpactLow:
 		emoji = "🟢"
 	}
 
@@ -395,14 +395,14 @@ func sendTelegramAlert(e forexcalendar.Event, minutesLeft int) error {
 	return nil
 }
 
-func sendSlackAlert(e forexcalendar.Event, minutesLeft int) error {
+func sendSlackAlert(e tvcalendar.Event, minutesLeft int) error {
 	emoji := ":white_circle:"
 	switch e.Impact {
-	case forexcalendar.ImpactHigh:
+	case tvcalendar.ImpactHigh:
 		emoji = ":red_circle:"
-	case forexcalendar.ImpactMedium:
+	case tvcalendar.ImpactMedium:
 		emoji = ":large_orange_circle:"
-	case forexcalendar.ImpactLow:
+	case tvcalendar.ImpactLow:
 		emoji = ":large_green_circle:"
 	}
 
@@ -453,7 +453,7 @@ func sendSlackAlert(e forexcalendar.Event, minutesLeft int) error {
 	return nil
 }
 
-func sendGenericWebhookAlert(e forexcalendar.Event, minutesLeft int) error {
+func sendGenericWebhookAlert(e tvcalendar.Event, minutesLeft int) error {
 	payload := map[string]interface{}{
 		"event":        e,
 		"minutes_left": minutesLeft,

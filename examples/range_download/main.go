@@ -6,18 +6,18 @@ import (
 	"log"
 	"time"
 
-	"github.com/Nosvemos/forexcalendar-go/pkg/forexcalendar"
-	"github.com/Nosvemos/forexcalendar-go/pkg/storage"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/storage"
+	"github.com/Nosvemos/tradingview-calendar-go/pkg/tvcalendar"
 )
 
 func main() {
-	fmt.Println("=== ForexCalendar Go SDK: Range Download Example ===")
+	fmt.Println("=== TradingView Calendar Go SDK: Range Download Example ===")
 
-	client := forexcalendar.NewClient(
-		forexcalendar.WithRateLimit(10),
-		forexcalendar.WithConcurrency(5),
-		forexcalendar.WithTimeLocation(time.Local),
-		forexcalendar.WithProgressCallback(func(current, total int) {
+	client := tvcalendar.NewClient(
+		tvcalendar.WithRateLimit(10),
+		tvcalendar.WithConcurrency(5),
+		tvcalendar.WithTimeLocation(time.Local),
+		tvcalendar.WithProgressCallback(func(current, total int) {
 			pct := (current * 100) / total
 			fmt.Printf("[SDK Progress] Downloaded month %d/%d (%d%%)\n", current, total, pct)
 		}),
@@ -57,7 +57,7 @@ func main() {
 
 	count := 0
 	for _, e := range dbEvents {
-		if e.Impact == forexcalendar.ImpactHigh {
+		if e.Impact == tvcalendar.ImpactHigh {
 			fmt.Printf("🔴 [%s] %s (Actual: %s, Forecast: %s)\n", e.Date.Format("2006-01-02 15:04"), e.Title, e.Actual, e.Forecast)
 			count++
 		}

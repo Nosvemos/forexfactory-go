@@ -1,5 +1,5 @@
 # .goreleaser.yaml
-# Production-ready GoReleaser configuration for forexcalendar-go
+# Production-ready GoReleaser configuration for tradingview-calendar-go
 version: 2
 
 before:
@@ -7,9 +7,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: forexcalendar-go
-    main: ./cmd/forexcalendar-go/main.go
-    binary: forexcalendar
+  - id: tvcalendar
+    main: ./cmd/tvcalendar/main.go
+    binary: tvcalendar
     env:
       - CGO_ENABLED=0
     goos:
@@ -20,9 +20,9 @@ builds:
       - amd64
       - arm64
 
-  - id: fc-notifier
-    main: ./cmd/fc-notifier/main.go
-    binary: fc-notifier
+  - id: tv-notifier
+    main: ./cmd/tv-notifier/main.go
+    binary: tv-notifier
     env:
       - CGO_ENABLED=0
     goos:
