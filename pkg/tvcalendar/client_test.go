@@ -253,7 +253,7 @@ func TestClientFilters(t *testing.T) {
 func TestExcelAndParquetExport(t *testing.T) {
 	events := []Event{
 		{
-			ID:       "99",
+			ID:       "1",
 			Title:    "US CPI MoM",
 			Country:  "US",
 			Currency: "USD",
@@ -263,17 +263,48 @@ func TestExcelAndParquetExport(t *testing.T) {
 			Forecast: "0.3%",
 			Previous: "0.2%",
 		},
+		{
+			ID:       "2",
+			Title:    "Retail Sales",
+			Country:  "US",
+			Currency: "USD",
+			Date:     time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC),
+			Impact:   ImpactMedium,
+			Actual:   "0.1%",
+			Forecast: "0.2%",
+			Previous: "0.3%",
+		},
+		{
+			ID:       "3",
+			Title:    "Mortgage Approvals",
+			Country:  "GB",
+			Currency: "GBP",
+			Date:     time.Date(2025, 1, 15, 9, 30, 0, 0, time.UTC),
+			Impact:   ImpactLow,
+			Actual:   "50K",
+			Forecast: "52K",
+			Previous: "51K",
+		},
+		{
+			ID:       "4",
+			Title:    "Bank Holiday",
+			Country:  "JP",
+			Currency: "JPY",
+			Date:     time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
+			Impact:   ImpactNone,
+			IsAllDay: true,
+		},
 	}
 
-	tempExcel := "test_export.xlsx"
-	defer os.Remove(tempExcel)
+	tempExcel := "temp_dir/test_export.xlsx"
+	defer os.RemoveAll("temp_dir")
 
 	if err := WriteExcel(events, tempExcel); err != nil {
 		t.Fatalf("WriteExcel failed: %v", err)
 	}
 
-	tempParquet := "test_export.parquet"
-	defer os.Remove(tempParquet)
+	tempParquet := "temp_parquet_dir/test_export.parquet"
+	defer os.RemoveAll("temp_parquet_dir")
 
 	if err := WriteParquet(tempParquet, events); err != nil {
 		t.Fatalf("WriteParquet failed: %v", err)

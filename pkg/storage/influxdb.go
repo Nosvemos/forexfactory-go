@@ -130,20 +130,19 @@ func (i *InfluxDBStorage) GetEventsByCurrency(ctx context.Context, currency stri
 	return i.executeFluxQuery(ctx, fluxQuery)
 }
 
-// QueryEvents retrieves events matching a set of dynamic filter criteria.
-func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
-	startStr := "-10y" // Default to broad historical window
-	if filter.StartDate != nil {
-		startStr = filter.StartDate.Format(time.RFC3339)
-	}
-
+// buildFluxQuery constructs the Flux script for dynamic querying.
+func (i *InfluxDBStorage) buildFluxQuery(filter QueryFilter) string {
+	startStr := "-30d"
 	stopStr := "now()"
+
+	if filter.StartDate != nil {
+		startStr = filter.StartDate.UTC().Format(time.RFC3339)
+	}
 	if filter.EndDate != nil {
-		stopStr = filter.EndDate.Format(time.RFC3339)
+		stopStr = filter.EndDate.UTC().Format(time.RFC3339)
 	}
 
-	var filterConditions []string
-	filterConditions = append(filterConditions, `r["_measurement"] == "economic_events"`)
+	filterConditions := []string{`r["_measurement"] == "economic_events"`}
 
 	if len(filter.Currencies) > 0 {
 		var sub []string
@@ -170,6 +169,17 @@ func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) (
 			|> pivot(rowKey:["_time", "currency", "impact", "is_all_day", "is_tentative"], columnKey: ["_field"], valueColumn: "_value")
 			|> sort(columns: ["_time"])
 	`, i.bucket, startStr, stopStr, strings.Join(filterConditions, " and "))
+
+	return fluxQuery
+}
+
+// QueryEvents retrieves events matching dynamic filter parameters.
+func (i *InfluxDBStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
+	if i.client == nil {
+		return nil, fmt.Errorf("influxdb client not initialized, call Init() first")
+	}
+
+	fluxQuery := i.buildFluxQuery(filter)
 
 	return i.executeFluxQuery(ctx, fluxQuery)
 }

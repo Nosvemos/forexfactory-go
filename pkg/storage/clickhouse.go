@@ -182,12 +182,8 @@ func (c *ClickHouseStorage) GetEventsByCurrency(ctx context.Context, currency st
 	return c.scanEvents(rows)
 }
 
-// QueryEvents retrieves events matching a set of dynamic filter criteria.
-func (c *ClickHouseStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
-	if c.conn == nil {
-		return nil, fmt.Errorf("clickhouse connection not initialized, call Init() first")
-	}
-
+// buildQuery constructs the SQL query and arguments for dynamic filtering.
+func (c *ClickHouseStorage) buildQuery(filter QueryFilter) (string, []interface{}) {
 	var queryParts []string
 	var args []interface{}
 
@@ -222,6 +218,17 @@ func (c *ClickHouseStorage) QueryEvents(ctx context.Context, filter QueryFilter)
 
 	queryParts = append(queryParts, "ORDER BY date ASC")
 	queryStr := strings.Join(queryParts, " ")
+
+	return queryStr, args
+}
+
+// QueryEvents retrieves events matching a set of dynamic filter criteria.
+func (c *ClickHouseStorage) QueryEvents(ctx context.Context, filter QueryFilter) ([]tvcalendar.Event, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("clickhouse connection not initialized, call Init() first")
+	}
+
+	queryStr, args := c.buildQuery(filter)
 
 	rows, err := c.conn.Query(ctx, queryStr, args...)
 	if err != nil {

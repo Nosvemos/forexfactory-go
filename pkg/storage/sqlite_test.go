@@ -61,6 +61,19 @@ func TestSQLiteStorage(t *testing.T) {
 			IsAllDay:    true,
 			IsTentative: true,
 		},
+		{
+			ID:          "low-gbp-1",
+			Title:       "UK BRC Shop Price Index",
+			Country:     "GB",
+			Currency:    "GBP",
+			Date:        time.Date(2026, time.May, 27, 0, 0, 0, 0, time.UTC),
+			Impact:      tvcalendar.ImpactLow,
+			Forecast:    "0.5%",
+			Previous:    "0.6%",
+			Actual:      "0.4%",
+			IsAllDay:    true,
+			IsTentative: false,
+		},
 	}
 
 	if err := store.SaveEvents(ctx, testEvents); err != nil {
@@ -87,7 +100,32 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Errorf("GetEventsByCurrency failed to return USD events correctly")
 	}
 
-	// 4.5. Test QueryEvents with dynamic QueryFilter
+	// 5. Test QueryEvents with various filter permutations
+	// 5a. Filter by StartDate only
+	qStartOnly, err := store.QueryEvents(ctx, QueryFilter{StartDate: &startQuery})
+	if err != nil || len(qStartOnly) != 3 {
+		t.Errorf("QueryEvents StartDate only failed: count=%d, err=%v", len(qStartOnly), err)
+	}
+
+	// 5b. Filter by EndDate only
+	qEndOnly, err := store.QueryEvents(ctx, QueryFilter{EndDate: &endQuery})
+	if err != nil || len(qEndOnly) != 2 {
+		t.Errorf("QueryEvents EndDate only failed: count=%d, err=%v", len(qEndOnly), err)
+	}
+
+	// 5c. Filter by Currencies only (multiple currencies)
+	qCurrs, err := store.QueryEvents(ctx, QueryFilter{Currencies: []string{"EUR", "GBP"}})
+	if err != nil || len(qCurrs) != 2 {
+		t.Errorf("QueryEvents Currencies only failed: count=%d, err=%v", len(qCurrs), err)
+	}
+
+	// 5d. Filter by Impacts only (multiple impacts)
+	qImpacts, err := store.QueryEvents(ctx, QueryFilter{Impacts: []tvcalendar.Impact{tvcalendar.ImpactHigh, tvcalendar.ImpactMedium}})
+	if err != nil || len(qImpacts) != 2 {
+		t.Errorf("QueryEvents Impacts only failed: count=%d, err=%v", len(qImpacts), err)
+	}
+
+	// 5e. Combined filter
 	filter := QueryFilter{
 		StartDate:  &startQuery,
 		EndDate:    &endQuery,
@@ -102,12 +140,12 @@ func TestSQLiteStorage(t *testing.T) {
 		t.Errorf("QueryEvents failed to filter correctly: expected 1 FOMC event, got %d", len(highUsdEvents))
 	}
 
-	// 5. Close connection
+	// 6. Close connection
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	// 6. Verify data in sandbox using raw SQL query
+	// 7. Verify data in sandbox using raw SQL query
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to open verified database: %v", err)

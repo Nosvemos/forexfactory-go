@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,71 @@ func TestDriversImplementsStorageInterface(t *testing.T) {
 	var infVar interface{} = NewInfluxDBStorage("http://localhost:8086", "token", "org", "bucket")
 	if _, ok := infVar.(Storage); !ok {
 		t.Errorf("InfluxDBStorage does not implement Storage interface")
+	}
+}
+
+func TestClickHouseQueryBuilder(t *testing.T) {
+	ch := NewClickHouseStorage("localhost:9000", "default", "user", "pass")
+	defer ch.Close()
+
+	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := now.Add(30 * 24 * time.Hour)
+
+	// 1. All filters
+	filter := QueryFilter{
+		StartDate:  &now,
+		EndDate:    &end,
+		Currencies: []string{"USD", "EUR"},
+		Impacts:    []tvcalendar.Impact{tvcalendar.ImpactHigh, tvcalendar.ImpactMedium},
+	}
+
+	query, args := ch.buildQuery(filter)
+	if !strings.Contains(query, "WHERE 1=1 AND date >= ? AND date <= ? AND currency IN (?,?) AND impact IN (?,?)") {
+		t.Errorf("Unexpected ClickHouse query: %s", query)
+	}
+	if len(args) != 6 {
+		t.Errorf("Expected 6 args, got %d", len(args))
+	}
+
+	// 2. Empty filter
+	queryEmpty, argsEmpty := ch.buildQuery(QueryFilter{})
+	if !strings.Contains(queryEmpty, "WHERE 1=1 ORDER BY date ASC") {
+		t.Errorf("Unexpected empty ClickHouse query: %s", queryEmpty)
+	}
+	if len(argsEmpty) != 0 {
+		t.Errorf("Expected 0 args for empty filter, got %d", len(argsEmpty))
+	}
+}
+
+func TestInfluxDBFluxQueryBuilder(t *testing.T) {
+	inf := NewInfluxDBStorage("http://localhost:8086", "test-token", "my-org", "macro_events")
+	defer inf.Close()
+
+	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := now.Add(30 * 24 * time.Hour)
+
+	filter := QueryFilter{
+		StartDate:  &now,
+		EndDate:    &end,
+		Currencies: []string{"USD"},
+		Impacts:    []tvcalendar.Impact{tvcalendar.ImpactHigh},
+	}
+
+	flux := inf.buildFluxQuery(filter)
+	if !strings.Contains(flux, `from(bucket: "macro_events")`) {
+		t.Errorf("Flux query missing bucket: %s", flux)
+	}
+	if !strings.Contains(flux, `r["currency"] == "USD"`) {
+		t.Errorf("Flux query missing currency filter: %s", flux)
+	}
+	if !strings.Contains(flux, `r["impact"] == "High"`) {
+		t.Errorf("Flux query missing impact filter: %s", flux)
+	}
+
+	// Empty filter
+	fluxEmpty := inf.buildFluxQuery(QueryFilter{})
+	if !strings.Contains(fluxEmpty, "range(start: -30d, stop: now())") {
+		t.Errorf("Flux empty query unexpected: %s", fluxEmpty)
 	}
 }
 

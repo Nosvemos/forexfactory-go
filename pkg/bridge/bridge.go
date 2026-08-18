@@ -149,7 +149,12 @@ func (b *Bridge) Start(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "[Bridge Warning] Initial sync failed: %v\n", err)
 	}
 
-	ticker := time.NewTicker(b.cfg.Interval)
+	interval := b.cfg.Interval
+	if interval <= 0 {
+		interval = 1 * time.Minute
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
